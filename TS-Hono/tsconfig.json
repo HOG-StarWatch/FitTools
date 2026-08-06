@@ -12,6 +12,6 @@
     "sourceMap": false,
     "baseUrl": "."
   },
-  "include": ["src/**/*", "server.ts", "build.pages.ts"],
+  "include": ["src/**/*", "functions/**/*", "server.ts", "build.pages.ts"],
   "exclude": ["node_modules", "dist", "dist-workers"]
 }

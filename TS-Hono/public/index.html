@@ -214,6 +214,15 @@
               <span>多份打包为 ZIP</span>
             </label>
           </div>
+          <div class="elevation-source-row">
+            <label class="options-title" for="elevationSourceSelect">海拔数据源</label>
+            <select id="elevationSourceSelect" class="styled-select">
+              <option value="open-elevation" selected>Open-Elevation（真实海拔）</option>
+              <option value="opentopodata">OpenTopoData（真实海拔）</option>
+              <option value="off">模拟海拔（离线）</option>
+            </select>
+            <div id="elevationStatus" class="elevation-status"></div>
+          </div>
           <div class="export-options">
             <p class="options-title">传感器数据</p>
             <div class="checkbox-grid">
@@ -251,37 +260,54 @@
 
       <div id="message" class="message"></div>
 
-      <div class="preview-panel">
-        <div class="preview-chart">
-          <h3>配速 min/km</h3>
-          <canvas id="paceChart"></canvas>
-        </div>
-        <div class="preview-chart">
-          <h3>心率 bpm</h3>
-          <canvas id="hrChart"></canvas>
-        </div>
-        <div id="previewStats" class="preview-stats" style="display:none">
-          <div class="stats-grid">
-            <div class="stat-item"><span class="stat-label">总距离</span><span class="stat-value" id="statDistance">-</span></div>
-            <div class="stat-item"><span class="stat-label">总时长</span><span class="stat-value" id="statDuration">-</span></div>
-            <div class="stat-item"><span class="stat-label">平均配速</span><span class="stat-value" id="statPace">-</span></div>
-            <div class="stat-item"><span class="stat-label">卡路里</span><span class="stat-value" id="statCalories">-</span></div>
-            <div class="stat-item"><span class="stat-label">平均心率</span><span class="stat-value" id="statHr">-</span></div>
-            <div class="stat-item"><span class="stat-label">平均步频</span><span class="stat-value" id="statCadence">-</span></div>
-            <div class="stat-item"><span class="stat-label">平均功率</span><span class="stat-value" id="statPower">-</span></div>
-            <div class="stat-item"><span class="stat-label">平均步幅</span><span class="stat-value" id="statStride">-</span></div>
-            <div class="stat-item"><span class="stat-label">触地时间</span><span class="stat-value" id="statGroundTime">-</span></div>
-            <div class="stat-item"><span class="stat-label">腾空时间</span><span class="stat-value" id="statFlightTime">-</span></div>
-            <div class="stat-item"><span class="stat-label">垂直振幅</span><span class="stat-value" id="statVertOsc">-</span></div>
-            <div class="stat-item"><span class="stat-label">运动负荷</span><span class="stat-value" id="statLoad">-</span></div>
-          </div>
-        </div>
-      </div>
-
       <div id="liveInfo" class="live-info"></div>
     </div>
 
     <div id="map"></div>
+  </div>
+
+  <div id="previewModal" class="modal">
+    <div class="modal-content preview-modal">
+      <div class="modal-header">
+        <h3>运动预览</h3>
+        <button class="modal-close" onclick="closePreviewModal()" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body preview-modal-body">
+        <div class="preview-charts-col">
+          <div class="preview-chart">
+            <h3>海拔 m</h3>
+            <canvas id="altChart"></canvas>
+          </div>
+          <div class="preview-chart">
+            <h3>配速 min/km</h3>
+            <canvas id="paceChart"></canvas>
+          </div>
+          <div class="preview-chart">
+            <h3>心率 bpm</h3>
+            <canvas id="hrChart"></canvas>
+          </div>
+        </div>
+        <div id="previewStats" class="preview-stats" style="display:none">
+          <div class="stat-list">
+            <div class="stat-row"><span class="stat-row-label">总距离</span><span class="stat-row-value" id="statDistance">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">总时长</span><span class="stat-row-value" id="statDuration">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">平均配速</span><span class="stat-row-value" id="statPace">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">卡路里</span><span class="stat-row-value" id="statCalories">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">平均心率</span><span class="stat-row-value" id="statHr">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">平均步频</span><span class="stat-row-value" id="statCadence">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">平均功率</span><span class="stat-row-value" id="statPower">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">平均步幅</span><span class="stat-row-value" id="statStride">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">触地时间</span><span class="stat-row-value" id="statGroundTime">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">腾空时间</span><span class="stat-row-value" id="statFlightTime">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">垂直振幅</span><span class="stat-row-value" id="statVertOsc">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">运动负荷</span><span class="stat-row-value" id="statLoad">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">总爬升</span><span class="stat-row-value" id="statAscent">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">总下降</span><span class="stat-row-value" id="statDescent">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">平均海拔</span><span class="stat-row-value" id="statAltitude">-</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="sponsorModal" class="modal">
@@ -313,6 +339,8 @@
         <div class="loading-spinner"></div>
         <p class="generating-text" id="generatingText">正在生成 FIT 文件...</p>
         <p class="generating-hint" id="generatingHint" style="display: none;"></p>
+        <p class="generating-countdown" id="generatingCountdown" style="display: none;"></p>
+        <button class="generating-close" id="generatingCloseBtn" style="display: none;">知道了</button>
       </div>
     </div>
   </div>

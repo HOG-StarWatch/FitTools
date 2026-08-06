@@ -1335,6 +1335,7 @@ let smoothedPoints = null;
 let smoothPolyline = null;
 let paceChart = null;
 let hrChart = null;
+let altChart = null;
 let previewData = null;
 let previewTimer = null;
 let previewMarker = null;
@@ -1757,6 +1758,7 @@ async function generateFit() {
   let successCount = 0;
   let failCount = 0;
   let lastError = '';
+  let lastElevationInfo = null;
   const fitBlobs = [];
   
   try {
@@ -1785,6 +1787,7 @@ async function generateFit() {
       const powerFactor = parseFloat(document.getElementById("powerFactor")?.value) || 1.3;
       const gpsDrift = parseFloat(document.getElementById("gpsDrift")?.value) || 0;
       const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || 170;
+      const elevationSource = document.getElementById("elevationSourceSelect")?.value || 'open-elevation';
       const includeHeartRate = document.getElementById("includeHeartRate")?.checked ?? true;
       const includePower = document.getElementById("includePower")?.checked ?? true;
       const includeCadence = document.getElementById("includeCadence")?.checked ?? true;
@@ -1800,6 +1803,7 @@ async function generateFit() {
             paceSecondsPerKm: filePaceSecondsPerKm,
             hrRest, hrMax, lapCount, variantIndex: i + 1,
             weightKg, powerFactor, gpsDrift, avgCadence,
+            elevationSource,
             includeHeartRate, includePower, includeCadence, includeGaitData
           })
         });
@@ -1814,6 +1818,10 @@ async function generateFit() {
         const blob = await res.blob();
         fitBlobs.push({ blob, name: `run_${i + 1}.fit` });
         successCount++;
+        lastElevationInfo = {
+          source: res.headers.get('x-elevation-source'),
+          status: res.headers.get('x-elevation-status')
+        };
       } catch (e) {
         failCount++;
         lastError = `第 ${i + 1} 份请求异常: ${e.message}`;
@@ -1860,15 +1868,12 @@ async function generateFit() {
         : lastError
     );
     updateMessage(summary);
+    setElevationStatus(lastElevationInfo);
     
     if (successCount > 0) {
-      setTimeout(() => {
-        hideGeneratingModal();
-      }, 5000);
+      scheduleGeneratingClose(5);
     } else {
-      setTimeout(() => {
-        hideGeneratingModal();
-      }, 2000);
+      scheduleGeneratingClose(3);
     }
   } finally {
     isGenerating = false;
@@ -1899,6 +1904,7 @@ function renderPreviewStats(preview) {
   let sumGround = 0, sumFlight = 0, sumVert = 0, sumSpeed = 0;
   let hrCount = 0, cadCount = 0, powerCount = 0;
   let groundCount = 0, flightCount = 0, vertCount = 0;
+  let sumAltitude = 0, altCount = 0, totalAscent = 0, totalDescent = 0;
 
   for (const s of samples) {
     if (s.heartRate) { sumHr += s.heartRate; hrCount++; }
@@ -1908,6 +1914,13 @@ function renderPreviewStats(preview) {
     if (s.flightTime) { sumFlight += s.flightTime; flightCount++; }
     if (s.verticalOscillation) { sumVert += s.verticalOscillation; vertCount++; }
     if (s.speed) sumSpeed += s.speed;
+    if (typeof s.altitude === 'number') { sumAltitude += s.altitude; altCount++; }
+  }
+
+  for (let i = 1; i < samples.length; i++) {
+    const diff = samples[i].altitude - samples[i - 1].altitude;
+    if (diff > 0) totalAscent += diff;
+    else totalDescent += Math.abs(diff);
   }
 
   const avgSpeed = sumSpeed / n;
@@ -1950,9 +1963,50 @@ function renderPreviewStats(preview) {
   setText('statFlightTime', avgFlight ? `${avgFlight} ms` : '—');
   setText('statVertOsc', avgVertMm ? `${avgVertCm} cm` : '—');
   setText('statLoad', load ? `${load}` : '—');
+  setText('statAscent', altCount > 1 ? `${Math.round(totalAscent)} m` : '—');
+  setText('statDescent', altCount > 1 ? `${Math.round(totalDescent)} m` : '—');
+  setText('statAltitude', altCount ? `${Math.round(sumAltitude / altCount)} m` : '—');
 
   const statsEl = document.getElementById('previewStats');
   if (statsEl) statsEl.style.display = 'block';
+}
+
+function openPreviewModal() {
+  const modal = document.getElementById('previewModal');
+  if (modal) modal.classList.add('active');
+}
+
+function closePreviewModal() {
+  const modal = document.getElementById('previewModal');
+  if (modal) modal.classList.remove('active');
+}
+
+document.getElementById('previewModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'previewModal') closePreviewModal();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePreviewModal();
+});
+
+function setElevationStatus(info) {
+  const el = document.getElementById('elevationStatus');
+  if (!el) return;
+  if (!info || !info.status) {
+    el.className = 'elevation-status';
+    el.textContent = '';
+    return;
+  }
+  const sourceNames = { 'open-elevation': 'Open-Elevation', 'opentopodata': 'OpenTopoData', 'off': '模拟' };
+  const sourceName = sourceNames[info.source] || info.source || '';
+  let message = info.message || '';
+  if (!message) {
+    if (info.status === 'live') message = `已获取真实海拔（${sourceName}）`;
+    else if (info.status === 'fallback') message = `${sourceName} 获取失败，已回退模拟海拔`;
+    else message = '模拟海拔（离线生成）';
+  }
+  el.className = `elevation-status ${info.status === 'live' ? 'ok' : info.status === 'fallback' ? 'warn' : 'muted'}`;
+  el.textContent = message;
 }
 
 function renderPreviewCharts(preview) {
@@ -1961,8 +2015,7 @@ function renderPreviewCharts(preview) {
     return;
   }
   
-  const previewPanel = document.querySelector('.preview-panel');
-  if (previewPanel) previewPanel.classList.add('visible');
+  openPreviewModal();
   
   const labels = preview.samples.map((s) => (s.timeSec / 60).toFixed(1));
   const paceData = preview.samples.map((s) => {
@@ -1970,12 +2023,15 @@ function renderPreviewCharts(preview) {
     return (1000 / speed) / 60;
   });
   const hrData = preview.samples.map((s) => s.heartRate);
+  const altData = preview.samples.map((s) => (typeof s.altitude === 'number' ? s.altitude : null));
   
   const paceCtx = document.getElementById("paceChart")?.getContext("2d");
   const hrCtx = document.getElementById("hrChart")?.getContext("2d");
+  const altCtx = document.getElementById("altChart")?.getContext("2d");
   
   if (paceChart) paceChart.destroy();
   if (hrChart) hrChart.destroy();
+  if (altChart) altChart.destroy();
   
   paceChart = new Chart(paceCtx, {
     type: "line",
@@ -1994,6 +2050,16 @@ function renderPreviewCharts(preview) {
       responsive: true,
       plugins: { legend: { display: false } },
       scales: { x: { title: { display: true, text: "时间 (分钟)" } }, y: { title: { display: true, text: "bpm" } } }
+    }
+  });
+
+  altChart = new Chart(altCtx, {
+    type: "line",
+    data: { labels, datasets: [{ label: "海拔", data: altData, borderColor: "#2e7d32", backgroundColor: "rgba(46,125,50,0.12)", fill: true, tension: 0.2, pointRadius: 0 }] },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { title: { display: true, text: "时间 (分钟)" } }, y: { title: { display: true, text: "m" } } }
     }
   });
 
@@ -2046,6 +2112,7 @@ async function previewActivity() {
   const powerFactor = parseFloat(document.getElementById("powerFactor")?.value) || 1.3;
   const gpsDrift = parseFloat(document.getElementById("gpsDrift")?.value) || 0;
   const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || 170;
+  const elevationSource = document.getElementById("elevationSourceSelect")?.value || 'open-elevation';
   const includeHeartRate = document.getElementById("includeHeartRate")?.checked ?? true;
   const includePower = document.getElementById("includePower")?.checked ?? true;
   const includeCadence = document.getElementById("includeCadence")?.checked ?? true;
@@ -2066,6 +2133,7 @@ async function previewActivity() {
         points: routePoints,
         paceSecondsPerKm, hrRest, hrMax, lapCount,
         weightKg, powerFactor, gpsDrift, avgCadence,
+        elevationSource,
         includeHeartRate, includePower, includeCadence, includeGaitData
       })
     });
@@ -2078,6 +2146,7 @@ async function previewActivity() {
     
     const data = await res.json();
     renderPreviewCharts(data);
+    setElevationStatus(data.elevation);
     
     const km = (data.totalDistanceMeters / 1000).toFixed(2);
     const min = (data.totalDurationSec / 60).toFixed(1);
@@ -2138,10 +2207,16 @@ document.getElementById('sponsorModal')?.addEventListener('click', (e) => {
   }
 });
 
+let generatingCloseTimeout = null;
+let generatingCloseInterval = null;
+
 function showGeneratingModal(text = '正在生成 FIT 文件...') {
   const modal = document.getElementById('generatingModal');
   const textEl = document.getElementById('generatingText');
   const hintEl = document.getElementById('generatingHint');
+  const cdEl = document.getElementById('generatingCountdown');
+  const closeBtn = document.getElementById('generatingCloseBtn');
+  clearGeneratingCloseTimers();
   if (modal) {
     modal.classList.add('active');
     if (textEl) textEl.textContent = text;
@@ -2149,6 +2224,10 @@ function showGeneratingModal(text = '正在生成 FIT 文件...') {
       hintEl.style.display = 'none';
     }
   }
+  if (cdEl) cdEl.style.display = 'none';
+  if (closeBtn) closeBtn.style.display = 'none';
+  const spinner = document.querySelector('.loading-spinner');
+  if (spinner) spinner.style.display = 'block';
 }
 
 function updateGeneratingModal(text, hint = '') {
@@ -2165,12 +2244,58 @@ function updateGeneratingModal(text, hint = '') {
   }
 }
 
+function clearGeneratingCloseTimers() {
+  clearTimeout(generatingCloseTimeout);
+  clearInterval(generatingCloseInterval);
+  generatingCloseTimeout = null;
+  generatingCloseInterval = null;
+}
+
+function scheduleGeneratingClose(seconds) {
+  const cdEl = document.getElementById('generatingCountdown');
+  const closeBtn = document.getElementById('generatingCloseBtn');
+  clearGeneratingCloseTimers();
+
+  const setCountdown = (n) => {
+    if (cdEl) {
+      cdEl.style.display = 'block';
+      cdEl.textContent = `${n} 秒后自动关闭`;
+    }
+  };
+  const hide = () => {
+    clearGeneratingCloseTimers();
+    hideGeneratingModal();
+  };
+
+  if (closeBtn) closeBtn.style.display = 'block';
+  setCountdown(seconds);
+  const spinner = document.querySelector('.loading-spinner');
+  if (spinner) spinner.style.display = 'none';
+  let remaining = seconds;
+  generatingCloseInterval = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      hide();
+    } else {
+      setCountdown(remaining);
+    }
+  }, 1000);
+  generatingCloseTimeout = setTimeout(hide, seconds * 1000);
+}
+
 function hideGeneratingModal() {
   const modal = document.getElementById('generatingModal');
   if (modal) {
     modal.classList.remove('active');
   }
+  clearGeneratingCloseTimers();
+  const cdEl = document.getElementById('generatingCountdown');
+  const closeBtn = document.getElementById('generatingCloseBtn');
+  if (cdEl) cdEl.style.display = 'none';
+  if (closeBtn) closeBtn.style.display = 'none';
 }
+
+document.getElementById('generatingCloseBtn')?.addEventListener('click', hideGeneratingModal);
 
 // ==================== 服务状态检测模块 ====================
 

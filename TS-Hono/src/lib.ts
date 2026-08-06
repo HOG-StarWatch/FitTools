@@ -30,6 +30,7 @@ export interface SampleData {
   verticalOscillation: number;
   lat: number;
   lng: number;
+  altitude: number;
 }
 
 export interface ProcessedRoute {
@@ -46,6 +47,9 @@ export interface ProcessedRoute {
   variant: number;
   samples: SampleData[];
   totalDurationSec: number;
+  totalAscent: number;
+  totalDescent: number;
+  avgStrideLength: number;
 }
 
 export interface RequestBody {
@@ -60,6 +64,7 @@ export interface RequestBody {
   powerFactor?: number;
   gpsDrift?: number;
   avgCadence?: number;
+  elevationSource?: string;
   includeHeartRate?: boolean;
   includePower?: boolean;
   includeCadence?: boolean;
@@ -161,7 +166,8 @@ function computeSamples(
   hrMaxVal: number,
   targetAvgCadence: number,
   weightKg: number,
-  powerFactor: number
+  powerFactor: number,
+  altitudes: number[] | null = null
 ): ComputeSamplesResult {
   const totalDistanceKm = totalDist / 1000;
   const totalDurationEstimate = totalDistanceKm * paceSecondsPerKm;
@@ -171,6 +177,7 @@ function computeSamples(
   const baseSpeedFactor = 0.98 + Math.random() * 0.06;
   const phase1 = Math.random() * Math.PI * 2;
   const phase2 = Math.random() * Math.PI * 2;
+  const baseAlt = 50 + Math.random() * 30;
 
   const instSpeedRaw = new Array<number>(n);
   const hrValues = new Array<number>(n);
@@ -179,6 +186,8 @@ function computeSamples(
   const groundTimeValues = new Array<number>(n);
   const flightTimeValues = new Array<number>(n);
   const verticalOscillationValues = new Array<number>(n);
+
+  const hasRealAltitude = altitudes != null && altitudes.length === n;
 
   let currentHr = hrRestVal;
   let accumulatedTime = 0;
@@ -249,6 +258,10 @@ function computeSamples(
     if (i > 0) {
       t += segDurationsRaw[i - 1] * scale;
     }
+    const frac = distances[i] / totalDist;
+    const altitude = hasRealAltitude
+      ? altitudes![i]
+      : baseAlt + 2 * Math.sin(frac * Math.PI * 4) + (Math.random() - 0.5) * 0.8;
     samples.push({
       timeSec: t,
       distance: distances[i],
@@ -261,11 +274,42 @@ function computeSamples(
       verticalOscillation: verticalOscillationValues[i],
       lat: allPoints[i].lat,
       lng: allPoints[i].lng,
+      altitude,
     });
   }
 
   const computedTotalDurationSec = samples.length ? samples[samples.length - 1].timeSec : totalDurationEstimate;
   return { samples, totalDurationSec: computedTotalDurationSec };
+}
+
+function computeElevationSummary(samples: SampleData[]): {
+  totalAscent: number;
+  totalDescent: number;
+  avgStrideLength: number;
+} {
+  let totalAscent = 0;
+  let totalDescent = 0;
+  let strideSum = 0;
+  let strideCount = 0;
+
+  for (let i = 1; i < samples.length; i++) {
+    const diff = samples[i].altitude - samples[i - 1].altitude;
+    if (diff > 0) totalAscent += diff;
+    else totalDescent += Math.abs(diff);
+  }
+
+  for (const s of samples) {
+    if (s.speed > 0 && s.cadence > 0) {
+      strideSum += (s.speed * 60) / s.cadence;
+      strideCount++;
+    }
+  }
+
+  return {
+    totalAscent,
+    totalDescent,
+    avgStrideLength: strideCount > 0 ? strideSum / strideCount : 0,
+  };
 }
 
 export function processRouteRequest(body: RequestBody): { error: string } | ProcessedRoute {
@@ -366,9 +410,12 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     allPoints, distances, totalDist, pace, hrRestVal, hrMaxVal, targetAvgCadence, weight, power,
   );
 
+  const { totalAscent, totalDescent, avgStrideLength } = computeElevationSummary(samples);
+
   return {
     startDate, totalDist, pace, hrRestVal, hrMaxVal,
     targetAvgCadence, weight, power, calories, laps, variant, samples, totalDurationSec,
+    totalAscent, totalDescent, avgStrideLength,
   };
 }
 
@@ -394,17 +441,24 @@ export function applySensorOptions(samples: SampleData[], options?: {
   }));
 }
 
-export function generateFitFile(result: ProcessedRoute, sensorOptions?: {
-  includeHeartRate?: boolean;
-  includePower?: boolean;
-  includeCadence?: boolean;
-  includeGaitData?: boolean;
-}): Response {
+export function generateFitFile(
+  result: ProcessedRoute,
+  sensorOptions?: {
+    includeHeartRate?: boolean;
+    includePower?: boolean;
+    includeCadence?: boolean;
+    includeGaitData?: boolean;
+    includeAltitude?: boolean;
+  },
+  altitudes?: number[] | null,
+  elevationInfo?: { source: string; status: string } | null
+): Response {
   const { startDate, totalDist, totalDurationSec, hrMaxVal, variant, samples, calories } = result;
   const includeHeartRate = sensorOptions?.includeHeartRate !== false;
   const includePower = sensorOptions?.includePower !== false;
   const includeCadence = sensorOptions?.includeCadence !== false;
   const includeGaitData = sensorOptions?.includeGaitData !== false;
+  const includeAltitude = sensorOptions?.includeAltitude !== false;
   const avgSpeed = totalDurationSec > 0 ? totalDist / totalDurationSec : 0;
 
   let totalPower = 0;
@@ -418,6 +472,12 @@ export function generateFitFile(result: ProcessedRoute, sensorOptions?: {
   const avgPower = Math.round(totalPower / samples.length);
   const calculatedAvgCadence = Math.round(totalCadence / samples.length);
   const avgHr = Math.round(totalHr / samples.length);
+
+  let sessionSamples = samples;
+  if (includeAltitude && altitudes != null && altitudes.length === samples.length) {
+    sessionSamples = samples.map((s, i) => ({ ...s, altitude: altitudes[i] }));
+  }
+  const elevationSummary = computeElevationSummary(sessionSamples);
 
   const sessionEnd = new Date(startDate.getTime() + totalDurationSec * 1000);
 
@@ -434,7 +494,7 @@ export function generateFitFile(result: ProcessedRoute, sensorOptions?: {
   encoder.writeFileIdMessage();
   encoder.writeDeviceInfoMessage(startDate);
 
-  for (const s of samples) {
+  for (const s of sessionSamples) {
     const timestamp = new Date(startDate.getTime() + s.timeSec * 1000);
     const record: RecordData = {
       timestamp,
@@ -448,6 +508,7 @@ export function generateFitFile(result: ProcessedRoute, sensorOptions?: {
     if (includeHeartRate) record.heartRate = s.heartRate;
     if (includeCadence) record.cadence = Math.round(s.cadence / 2);
     if (includePower) record.power = s.power;
+    if (includeAltitude) record.altitude = s.altitude;
     if (includeGaitData) {
       record.stanceTime = s.groundTime;
       record.stanceTimePercent = clamp((s.groundTime / (s.groundTime + s.flightTime)) * 100, 40, 70);
@@ -488,6 +549,9 @@ export function generateFitFile(result: ProcessedRoute, sensorOptions?: {
     maxHeartRate: includeHeartRate ? hrMaxVal : 0,
     avgCadence: includeCadence ? Math.round(calculatedAvgCadence / 2) : 0,
     avgPower: includePower ? avgPower : 0,
+    totalAscent: includeAltitude ? Math.round(elevationSummary.totalAscent) : undefined,
+    totalDescent: includeAltitude ? Math.round(elevationSummary.totalDescent) : undefined,
+    avgStepLength: includeGaitData ? elevationSummary.avgStrideLength : undefined,
   }, includeHeartRate, includePower, includeCadence);
 
   encoder.writeActivityMessage({
@@ -499,13 +563,19 @@ export function generateFitFile(result: ProcessedRoute, sensorOptions?: {
 
   const uint8Array = encoder.close();
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/vnd.ant.fit',
+    'Content-Disposition': `attachment; filename=run_${variant}.fit`,
+  };
+  if (elevationInfo) {
+    headers['X-Elevation-Source'] = elevationInfo.source;
+    headers['X-Elevation-Status'] = elevationInfo.status;
+  }
+
   return new Response(uint8Array.buffer.slice(
     uint8Array.byteOffset,
     uint8Array.byteOffset + uint8Array.byteLength
   ) as ArrayBuffer, {
-    headers: {
-      'Content-Type': 'application/vnd.ant.fit',
-      'Content-Disposition': `attachment; filename=run_${variant}.fit`,
-    },
+    headers,
   });
 }

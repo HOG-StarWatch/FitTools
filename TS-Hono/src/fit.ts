@@ -22,6 +22,7 @@ export interface RecordData {
   stanceTimePercent?: number;
   verticalOscillation?: number;
   stepLength?: number;
+  altitude?: number;
 }
 
 export interface SessionData {
@@ -38,6 +39,9 @@ export interface SessionData {
   maxHeartRate: number;
   avgCadence: number;
   avgPower: number;
+  totalAscent?: number;
+  totalDescent?: number;
+  avgStepLength?: number;
 }
 
 export interface LapData {
@@ -153,6 +157,9 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     17: { size: 1, baseType: FIT_TYPES.uint8.baseType },   // max_heart_rate
     18: { size: 1, baseType: FIT_TYPES.uint8.baseType },   // avg_cadence
     20: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // avg_power
+    22: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // total_ascent
+    23: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // total_descent
+    134: { size: 2, baseType: FIT_TYPES.uint16.baseType }, // avg_step_length (scale 10, units mm)
   },
   lap: {
     2: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // start_time
@@ -185,6 +192,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     40: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // stance_time_percent
     41: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // stance_time
     73: { size: 4, baseType: FIT_TYPES.uint32.baseType },  // enhanced_speed
+    78: { size: 4, baseType: FIT_TYPES.sint32.baseType },  // altitude (scale 5, offset 500)
     85: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // step_length
   },
 };
@@ -278,6 +286,9 @@ export class FitEncoder {
     }
     if (includeCadence) fields.push({ num: 18, value: Math.round(data.avgCadence) });
     if (includePower) fields.push({ num: 20, value: Math.round(data.avgPower) });
+    if (data.totalAscent !== undefined) fields.push({ num: 22, value: Math.round(data.totalAscent) });
+    if (data.totalDescent !== undefined) fields.push({ num: 23, value: Math.round(data.totalDescent) });
+    if (data.avgStepLength !== undefined) fields.push({ num: 134, value: Math.round(data.avgStepLength * 10000) });
 
     this.writeDefinitionMessage(MESG_NUM['session'], 'session', fields, true);
     this.writeDataMessage(MESG_NUM['session'], fields);
@@ -359,6 +370,9 @@ export class FitEncoder {
     }
     if (data.stepLength !== undefined) {
       fields.push({ num: 85, value: Math.round(data.stepLength * 1000) });
+    }
+    if (data.altitude !== undefined) {
+      fields.push({ num: 78, value: Math.round((data.altitude + 500) * 5) });
     }
 
     const mesgNum = MESG_NUM['record'];

@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { processRouteRequest, generateFitFile, applySensorOptions, RequestBody } from './src/lib';
+import { fetchAltitudesOrNull, DEFAULT_ELEVATION_CONFIG, parseElevationSource } from './src/elevation';
 import { version } from './package.json';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -49,7 +50,16 @@ app.post('/api/preview', async (c) => {
     const result = processRouteRequest(body || {});
     if ('error' in result) return c.json({ error: result.error }, 400);
 
-    const samples = applySensorOptions(result.samples, {
+    const elevationConfig = { ...DEFAULT_ELEVATION_CONFIG };
+    const requestSource = parseElevationSource(body.elevationSource);
+    if (requestSource) elevationConfig.source = requestSource;
+    const elevation = await fetchAltitudesOrNull(result.samples.map(s => ({ lat: s.lat, lng: s.lng })), elevationConfig);
+
+    let samples = result.samples;
+    if (elevation.altitudes) {
+      samples = result.samples.map((s, i) => ({ ...s, altitude: elevation.altitudes![i] }));
+    }
+    samples = applySensorOptions(samples, {
       includeHeartRate: body.includeHeartRate,
       includePower: body.includePower,
       includeCadence: body.includeCadence,
@@ -61,6 +71,11 @@ app.post('/api/preview', async (c) => {
       totalDurationSec: result.totalDurationSec,
       samples,
       calories: result.calories,
+      elevation: {
+        source: elevation.source,
+        status: elevation.status,
+        message: elevation.message,
+      },
     });
   } catch (e) {
     console.error(e);
@@ -79,7 +94,11 @@ app.post('/api/generate-fit', async (c) => {
       includeCadence: body.includeCadence !== false,
       includeGaitData: body.includeGaitData !== false,
     };
-    return generateFitFile(result, sensorOptions);
+    const elevationConfig = { ...DEFAULT_ELEVATION_CONFIG };
+    const requestSource = parseElevationSource(body.elevationSource);
+    if (requestSource) elevationConfig.source = requestSource;
+    const elevation = await fetchAltitudesOrNull(result.samples.map(s => ({ lat: s.lat, lng: s.lng })), elevationConfig);
+    return generateFitFile(result, sensorOptions, elevation.altitudes, elevation);
   } catch (e) {
     console.error(e);
     return c.json({ error: '生成 FIT 文件失败' }, 500);

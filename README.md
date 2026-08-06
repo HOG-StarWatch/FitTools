@@ -32,7 +32,9 @@ FitTool 是一款基于 Web 的校园跑路线生成工具，支持在地图上�
 - **运动参数配置**：静息心率、最大心率、平均步频，体重、功率系数、GPS 偏移
 - **多圈数支持**：自定义跑步圈数，支持小数圈数，自动计算总距离
 - **按距离计算圈数**：输入目标距离自动计算所需圈数
-- **数据预览**：实时预览配速曲线和心率曲线
+- **数据预览**：实时预览配速、心率、海拔曲线
+- **真实海拔**：Open-Elevation / OpenTopoData 真实海拔查询，失败自动回退模拟海拔
+- **传感器开关**：生成 FIT 时可按需开启/关闭心率、功率、步频、步态数据
 - **批量导出**：支持一次导出多份 FIT 文件
 - **坐标系统转换**：自动处理 GCJ-02、BD-09、WGS-84 坐标系统
 - **URL 路线分享**：路线编码到 URL hash，支持一键分享（Polyline 算法压缩）
@@ -182,6 +184,12 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 
 > **安全提示**：`ALLOWED_ORIGINS = "*"` 仅用于开发环境。生产环境必须指定具体域名。
 
+### 5. 海拔源配置
+
+海拔服务配置硬编码在 `src/elevation.ts` 的 `DEFAULT_ELEVATION_CONFIG` 中。
+
+用户可在前端"海拔来源"下拉框按请求切换（`elevationSource`：`open-elevation` / `opentopodata` / `off`），后端在代码内解析；任一服务请求失败时自动回退本地模拟海拔。
+
 ---
 
 ## 二、Dashboard 部署
@@ -215,16 +223,18 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 
 ---
 
-## 三、Workers 限流配置
+## 三、请求限流配置
 
-Workers 版本内置请求限流（每小时 100 次/IP）。
+三种运行方式（Node 服务器 / Workers / Pages）均内置请求限流：**每小时 100 次 / IP**，由 `src/middleware/rate-limit.ts` 统一注入。
 
-如需调整或关闭限流，编辑 `src/middleware/rate-limit.ts`：
+如需调整，编辑 `src/middleware/rate-limit.ts`：
 
 ```typescript
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 时间窗口（毫秒）
-const RATE_LIMIT_MAX = 100; // 最大请求数，设为 0 可关闭限流
+const RATE_LIMIT = 100;        // 每个窗口内最大请求数
+const WINDOW_SECONDS = 3600;   // 窗口时长（秒）
 ```
+
+> 限流按窗口期划分（`Math.floor(now / WINDOW_SECONDS / 1000)`），每个 IP + 窗口维度计数，超限返回 `429` 并附带 `retryAfter` 秒数。
 
 ---
 
@@ -250,8 +260,9 @@ TS-Hono/
 │   ├── fit.ts          # FIT 文件编码器
 │   ├── lib.ts          # 业务逻辑和数据生成
 │   ├── workers.ts      # Workers 入口
+│   ├── elevation.ts    # 海拔查询（Open-Elevation / OpenTopoData / 模拟）
 │   └── middleware/
-│       └── rate-limit.ts  # 请求限制中间件（仅 Workers）
+│       └── rate-limit.ts  # 请求限流中间件（Node / Workers / Pages 通用）
 ├── functions/
 │   └── api/
 │       └── [[catchall]].ts  # Pages Functions 入口
@@ -310,18 +321,39 @@ TS-Hono/
 
 ```json
 {
-  "startTime": "2024-06-01T06:00:00Z",
+  "startTime": "2026-08-06T06:00:00Z",
   "points": [{ "lat": 39.9042, "lng": 116.4074 }, { "lat": 39.905, "lng": 116.408 }],
   "paceSecondsPerKm": 310,
   "hrRest": 60,
   "hrMax": 180,
   "lapCount": 1,
+  "variantIndex": 1,
   "weightKg": 65,
   "powerFactor": 1.3,
   "gpsDrift": 0.1,
-  "avgCadence": 170
+  "avgCadence": 170,
+  "elevationSource": "open-elevation",
+  "includeHeartRate": true,
+  "includePower": true,
+  "includeCadence": true,
+  "includeGaitData": true
 }
 ```
+
+| 字段 | 必填 | 说明 |
+| ---- | ---- | ---- |
+| `startTime` | 是 | ISO 时间戳，运动开始时间 |
+| `points` | 是 | 轨迹点（2~10000 个），纬度 -90~90，经度 -180~180 |
+| `paceSecondsPerKm` | 否 | 目标配速（秒/公里），默认 360 |
+| `hrRest` / `hrMax` | 否 | 静息/最大心率，默认 60 / 180 |
+| `lapCount` | 否 | 圈数（支持小数），默认 1，路线自动闭合 |
+| `variantIndex` | 否 | 变体序号，默认 1 |
+| `weightKg` | 否 | 体重，默认 65 |
+| `powerFactor` | 否 | 功率因数，默认 1.3 |
+| `gpsDrift` | 否 | GPS 漂移幅度，默认 0 |
+| `avgCadence` | 否 | 目标平均步频，默认 170 |
+| `elevationSource` | 否 | 海拔来源：`open-elevation` / `opentopodata` / `off` |
+| `includeHeartRate` / `includePower` / `includeCadence` / `includeGaitData` | 否 | 传感器开关 |
 
 **响应：**
 
@@ -329,18 +361,21 @@ TS-Hono/
 {
   "totalDistanceMeters": 1234.5,
   "totalDurationSec": 382.7,
-  "samples": [...],
-  "calories": 82
+  "samples": [{ "timeSec": 0, "distance": 0, "speed": 2.3, "heartRate": 60, "cadence": 150, "power": 130, "lat": 39.9042, "lng": 116.4074, "altitude": 40 }],
+  "calories": 82,
+  "elevation": { "source": "open-elevation", "status": "live", "message": "已获取真实海拔（Open-Elevation，100 个采样点）" }
 }
 ```
+
+> `elevation.status`：`live`（真实海拔）、`fallback`（请求失败已回退模拟）、`off`（海拔关闭）。
 
 ### POST /api/generate-fit
 
 生成 FIT 二进制文件并下载。
 
-**请求体：** 与 `/api/preview` 相同，额外支持 `variantIndex` 参数。
+**请求体：** 与 `/api/preview` 相同。
 
-**响应：** `application/vnd.ant.fit` 二进制文件。
+**响应：** `application/vnd.ant.fit` 二进制文件，文件名 `run_{variantIndex}.fit`；响应头 `X-Elevation-Source` / `X-Elevation-Status` 标注本次海拔来源与状态。
 
 ### GET /api/health
 
@@ -370,17 +405,16 @@ TS-Hono/
 }
 ```
 
-### 请求限制(仅Workers部署TS-Hono)
+### 请求限制
 
-Workers 版本 API 接口有限流保护：
+三种部署方式（Node / Workers / Pages）均有限流保护：
 - **限制**：每小时 100 次请求（按 IP 地址）
+- **实现**：Node 为单进程内存计数，真实可靠；Workers / Pages 基于 isolate 内存 `Map`，计数为近似值（跨 isolate 不共享，冷启动会重置）
 - **触发限流**：返回 `429` 状态码，包含 `retryAfter` 字段
 - **响应头**：
   - `X-RateLimit-Limit`: 最大请求数
   - `X-RateLimit-Remaining`: 剩余请求数
   - `X-RateLimit-Reset`: 重置时间戳
-
-> **注意**：Pages 版本无请求限流，适合公开服务。
 
 ***
 
