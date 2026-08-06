@@ -1,11 +1,11 @@
 export interface FitFileOptions {
   type?: string;
-  manufacturer?: string;
+  manufacturer?: string | number;
   product?: number;
   serialNumber?: number;
   timeCreated?: Date;
   sport?: string;
-  subSport?: string;
+  subSport?: string | number;
 }
 
 export interface RecordData {
@@ -33,7 +33,7 @@ export interface SessionData {
   totalDistance: number;
   totalCalories: number;
   sport: string;
-  subSport: string;
+  subSport: string | number;
   avgSpeed: number;
   avgHeartRate: number;
   maxHeartRate: number;
@@ -52,7 +52,7 @@ export interface LapData {
   totalDistance: number;
   totalCalories: number;
   sport: string;
-  subSport: string;
+  subSport: string | number;
   avgSpeed: number;
   avgHeartRate: number;
   maxHeartRate: number;
@@ -102,6 +102,7 @@ const MESG_NUM: Record<string, number> = {
 
 const SPORT_MAP: Record<string, number> = {
   running: 1,
+  walking: 11,
   cycling: 2,
   transition: 3,
   swimming: 5,
@@ -116,6 +117,33 @@ const SPORT_MAP: Record<string, number> = {
   kayaking: 21,
   gymnastics: 31,
 };
+
+const SUB_SPORT_MAP: Record<string, number> = {
+  generic: 0,
+  treadmill: 1,
+  street: 2,
+  trail: 3,
+  track: 4,
+  indoorRunning: 45,
+  indoor_running: 45,
+  indoor_run: 45,
+  obstacle: 59,
+  obstacle_run: 59,
+  virtualActivity: 58,
+  virtual_activity: 58,
+  casualWalking: 30,
+  casual_walking: 30,
+  indoorWalking: 27,
+  indoor_walking: 27,
+};
+
+function resolveSubSportId(subSport: string | number): number {
+  if (typeof subSport === 'number') {
+    return Number.isFinite(subSport) ? Math.max(0, Math.min(255, Math.floor(subSport))) : 0;
+  }
+  const v = SUB_SPORT_MAP[subSport];
+  return v !== undefined ? v : 0;
+}
 
 // ==================== Field Definition Registry ====================
 // Maps field numbers to their FIT type and byte size, eliminating fragile hardcoded checks
@@ -136,7 +164,6 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     2: { size: 2, baseType: FIT_TYPES.uint16.baseType },   // product
     3: { size: 4, baseType: FIT_TYPES.uint32z.baseType },  // serial_number
     4: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // time_created
-    5: { size: 1, baseType: FIT_TYPES.enum.baseType },     // .fit file type
   },
   device_info: {
     2: { size: 2, baseType: FIT_TYPES.uint16.baseType },   // manufacturer
@@ -244,21 +271,21 @@ export class FitEncoder {
 
   writeFileIdMessage(): void {
     const fields: Array<{ num: number; value: number }> = [
-      { num: 0, value: 1 },
-      { num: 1, value: this.options.manufacturer === 'development' ? 1 : this.getManufacturerId() },
+      { num: 0, value: this.options.type === 'activity' ? 4 : 1 },
+      { num: 1, value: this.resolveManufacturerId() },
       { num: 2, value: this.options.product },
       { num: 3, value: this.options.serialNumber === 1 ? 0xffffffff : this.options.serialNumber },
       { num: 4, value: this.getDateValue(this.options.timeCreated) },
-      { num: 5, value: this.options.type === 'activity' ? 4 : 0 },
     ];
 
     this.writeDefinitionMessage(MESG_NUM['file_id'], 'file_id', fields, true);
+    this.writeDataMessage(MESG_NUM['file_id'], fields);
   }
 
   writeDeviceInfoMessage(timestamp: Date): void {
     const fields: Array<{ num: number; value: number }> = [
       { num: 253, value: this.getDateValue(timestamp) },
-      { num: 2, value: this.options.manufacturer === 'development' ? 1 : this.getManufacturerId() },
+      { num: 2, value: this.resolveManufacturerId() },
       { num: 3, value: this.options.serialNumber === 1 ? 0xffffffff : this.options.serialNumber },
       { num: 4, value: this.options.product },
     ];
@@ -272,7 +299,7 @@ export class FitEncoder {
       { num: 253, value: this.getDateValue(data.timestamp) },
       { num: 2, value: this.getDateValue(data.startTime) },
       { num: 5, value: SPORT_MAP[data.sport] || 1 },
-      { num: 6, value: data.subSport === 'generic' ? 0 : SPORT_MAP[data.subSport] || 0 },
+      { num: 6, value: resolveSubSportId(data.subSport) },
       { num: 7, value: Math.round(data.totalElapsedTime * 1000) },
       { num: 8, value: Math.round(data.totalTimerTime * 1000) },
       { num: 9, value: Math.round(data.totalDistance * 100) },
@@ -304,7 +331,7 @@ export class FitEncoder {
       { num: 11, value: data.totalCalories },
       { num: 13, value: Math.round(data.avgSpeed * 1000) },
       { num: 25, value: SPORT_MAP[data.sport] || 1 },
-      { num: 39, value: data.subSport === 'generic' ? 0 : SPORT_MAP[data.subSport] || 0 },
+      { num: 39, value: resolveSubSportId(data.subSport) },
     ];
 
     if (includeHeartRate) {
@@ -525,12 +552,20 @@ export class FitEncoder {
     }
   }
 
+  private resolveManufacturerId(): number {
+    if (typeof this.options.manufacturer === 'number') {
+      return Number.isFinite(this.options.manufacturer) ? this.options.manufacturer : 255;
+    }
+    return this.options.manufacturer === 'development' ? 255 : this.getManufacturerId();
+  }
+
   private getManufacturerId(): number {
-    const mfgName = this.options.manufacturer.toLowerCase();
+    const mfgName = String(this.options.manufacturer).toLowerCase();
     if (mfgName.includes('garmin')) return 1;
-    if (mfgName.includes('suunto')) return 34;
-    if (mfgName.includes('polar')) return 77;
-    if (mfgName.includes('wahoo')) return 88;
+    if (mfgName.includes('suunto')) return 23;
+    if (mfgName.includes('polar')) return 123;
+    if (mfgName.includes('wahoo')) return 32;
+    if (mfgName.includes('coros')) return 294;
     return 255;
   }
 

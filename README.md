@@ -32,9 +32,14 @@ FitTool 是一款基于 Web 的校园跑路线生成工具，支持在地图上�
 - **运动参数配置**：静息心率、最大心率、平均步频，体重、功率系数、GPS 偏移
 - **多圈数支持**：自定义跑步圈数，支持小数圈数，自动计算总距离
 - **按距离计算圈数**：输入目标距离自动计算所需圈数
-- **数据预览**：实时预览配速、心率、海拔曲线
-- **真实海拔**：Open-Elevation / OpenTopoData 真实海拔查询，失败自动回退模拟海拔
-- **传感器开关**：生成 FIT 时可按需开启/关闭心率、功率、步频、步态数据
+- **运动类型**：跑步 / 健走（FIT `sport` 分别写入 running=1 / walking=11，健走默认配速 12'/km、步频 100）
+- **训练模式**：匀速跑、负配速跑（前慢后快）、间歇跑（快慢交替，可设组数/快跑距离）、LSD 长距离慢跑（低心率低配速）
+- **设备品牌**：FIT `manufacturer_id` 硬编码映射（Garmin / Coros / Polar / Suunto / Wahoo 为官方值；Huawei / Xiaomi / Amazfit 为社区保留值），可选 Developer(255)，支持自定义 0-65535 数值，内置官方品牌对应表悬浮窗
+- **运动名称 / 子运动**：运动名称自定义（跑步、户外跑步、室内跑…），FIT `sub_sport` 选项（跑步机/公路/越野/操场/室内跑/障碍跑/虚拟跑…）或自定义 0-255
+- **导出格式**：FIT / TCX / GPX / CSV 四种格式，多份可打包 ZIP
+- **数据预览**：实时预览配速、心率、海拔曲线，统计训练时长（可加时长）、TRIMP 运动负荷、最高/最低海拔等
+- **真实海拔**：Open-Elevation / OpenTopoData（SRTM90 / SRTM30 / ASTER30 / EUDEM25）/ Open-Meteo 六种真实海拔源，失败自动回退模拟海拔；可"不写入海拔"（FIT 海拔字段留空）
+- **传感器开关**：生成 FIT 时可按需开启/关闭心率、功率、步频、步态数据（健走时心率自动关闭）
 - **批量导出**：支持一次导出多份 FIT 文件
 - **坐标系统转换**：自动处理 GCJ-02、BD-09、WGS-84 坐标系统
 - **URL 路线分享**：路线编码到 URL hash，支持一键分享（Polyline 算法压缩）
@@ -188,7 +193,20 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 
 海拔服务配置硬编码在 `src/elevation.ts` 的 `DEFAULT_ELEVATION_CONFIG` 中。
 
-用户可在前端"海拔来源"下拉框按请求切换（`elevationSource`：`open-elevation` / `opentopodata` / `off`），后端在代码内解析；任一服务请求失败时自动回退本地模拟海拔。
+用户可在前端"海拔来源"下拉框按请求切换（`elevationSource`）：
+
+| 值 | 说明 |
+| -- | ---- |
+| `none` | 不查询、不写入海拔（FIT 海拔字段留空） |
+| `off` | 模拟海拔（正弦随机曲线） |
+| `open-elevation` | Open-Elevation 真实海拔 |
+| `opentopodata` | OpenTopoData `srtm90m` 数据集 |
+| `opentopodata-srtm30m` | OpenTopoData `srtm30m` 数据集 |
+| `opentopodata-aster30m` | OpenTopoData `aster30m` 数据集 |
+| `opentopodata-eudem25m` | OpenTopoData `eudem25m` 数据集 |
+| `open-meteo` | Open-Meteo 海拔服务 |
+
+任一真实服务请求失败时自动回退本地模拟海拔；重复坐标点自动去重，并发请求加速。
 
 ---
 
@@ -259,8 +277,11 @@ TS-Hono/
 ├── src/
 │   ├── fit.ts          # FIT 文件编码器
 │   ├── lib.ts          # 业务逻辑和数据生成
+│   ├── handlers.ts     # /api/preview、/api/generate-* 共享处理器（Node / Workers / Pages 通用）
+│   ├── device.ts       # 设备品牌映射（官方 4 + 社区 3 + Developer 255，前端自定义数值直通）
+│   ├── exporters.ts    # TCX / GPX / CSV 导出与文件分发
 │   ├── workers.ts      # Workers 入口
-│   ├── elevation.ts    # 海拔查询（Open-Elevation / OpenTopoData / 模拟）
+│   ├── elevation.ts    # 海拔查询（8 种来源：不写入 / 模拟 / 6 种真实服务）
 │   └── middleware/
 │       └── rate-limit.ts  # 请求限流中间件（Node / Workers / Pages 通用）
 ├── functions/
@@ -336,7 +357,18 @@ TS-Hono/
   "includeHeartRate": true,
   "includePower": true,
   "includeCadence": true,
-  "includeGaitData": true
+  "includeGaitData": true,
+  "sportType": "running",
+  "sportName": "跑步",
+  "fitSubSport": "street",
+  "customSubSport": 0,
+  "deviceType": "garmin",
+  "heightCm": 175,
+  "workoutMode": "steady",
+  "intervalReps": 6,
+  "intervalFastKm": 0.4,
+  "elapsedExtraSeconds": 10,
+  "format": "fit"
 }
 ```
 
@@ -344,7 +376,7 @@ TS-Hono/
 | ---- | ---- | ---- |
 | `startTime` | 是 | ISO 时间戳，运动开始时间 |
 | `points` | 是 | 轨迹点（2~10000 个），纬度 -90~90，经度 -180~180 |
-| `paceSecondsPerKm` | 否 | 目标配速（秒/公里），默认 360 |
+| `paceSecondsPerKm` | 否 | 目标配速（秒/公里），默认 360；健走默认 720 |
 | `hrRest` / `hrMax` | 否 | 静息/最大心率，默认 60 / 180 |
 | `lapCount` | 否 | 圈数（支持小数），默认 1，路线自动闭合 |
 | `variantIndex` | 否 | 变体序号，默认 1 |
@@ -352,8 +384,19 @@ TS-Hono/
 | `powerFactor` | 否 | 功率因数，默认 1.3 |
 | `gpsDrift` | 否 | GPS 漂移幅度，默认 0 |
 | `avgCadence` | 否 | 目标平均步频，默认 170 |
-| `elevationSource` | 否 | 海拔来源：`open-elevation` / `opentopodata` / `off` |
+| `elevationSource` | 否 | 海拔来源：`none` / `off` / `open-elevation` / `opentopodata` / `opentopodata-srtm30m` / `opentopodata-aster30m` / `opentopodata-eudem25m` / `open-meteo` |
 | `includeHeartRate` / `includePower` / `includeCadence` / `includeGaitData` | 否 | 传感器开关 |
+| `sportType` | 否 | 运动类型：`running`（默认）/ `walking` |
+| `sportName` | 否 | 运动名称（如"跑步"、"户外跑步"），写入 FIT `sport` 名称字段 |
+| `fitSubSport` | 否 | FIT 子运动：`generic` / `treadmill` / `street` / `trail` / `track` / `indoorRunning` / `obstacle` / `virtualActivity` / `casualWalking` / `indoorWalking` |
+| `customSubSport` | 否 | 自定义子运动数值 0-255，优先级高于 `fitSubSport`（默认 0 表示按 `fitSubSport` 映射） |
+| `deviceType` | 否 | 设备品牌：`garmin` / `coros` / `polar` / `suunto` / `wahoo`（官方值）、`huawei` / `xiaomi` / `amazfit`（社区保留值，可能无法识别）、`development`（255），或直接填数字 manufacturer_id（0-65535，优先级最高） |
+| `heightCm` | 否 | 身高，默认 175，用于步幅/步态计算 |
+| `workoutMode` | 否 | 训练模式：`steady`（默认）/ `negative_split` / `interval` / `lsd` |
+| `intervalReps` | 否 | 间歇跑组数（`workoutMode=interval` 时生效），默认 4 |
+| `intervalFastKm` | 否 | 间歇跑快跑段距离（公里），默认 0.4 |
+| `elapsedExtraSeconds` | 否 | 训练时长额外增加秒数（FIT `total_elapsed_time`），默认 0 |
+| `format` | 否 | 仅 `/api/generate-fit` 使用：`fit`（默认）/ `tcx` / `gpx` / `csv` |
 
 **响应：**
 
@@ -361,21 +404,40 @@ TS-Hono/
 {
   "totalDistanceMeters": 1234.5,
   "totalDurationSec": 382.7,
+  "trainingDurationSec": 392.7,
   "samples": [{ "timeSec": 0, "distance": 0, "speed": 2.3, "heartRate": 60, "cadence": 150, "power": 130, "lat": 39.9042, "lng": 116.4074, "altitude": 40 }],
   "calories": 82,
+  "stats": {
+    "avgSpeed": 3.2, "avgHeartRate": 156, "avgCadence": 170, "avgPower": 224,
+    "totalAscent": 45.2, "totalDescent": 30.1,
+    "maxElevation": 60, "minElevation": 20,
+    "trainingLoad": 25.4
+  },
   "elevation": { "source": "open-elevation", "status": "live", "message": "已获取真实海拔（Open-Elevation，100 个采样点）" }
 }
 ```
 
-> `elevation.status`：`live`（真实海拔）、`fallback`（请求失败已回退模拟）、`off`（海拔关闭）。
+> `elevation.status`：`live`（真实海拔）、`fallback`（请求失败已回退模拟）、`off`（模拟海拔）、`none`（不写入海拔）。
+> `stats.trainingLoad` 为 TRIMP 训练负荷（训练时长加权）；`trainingDurationSec` = 运动时长 + `elapsedExtraSeconds`。
 
 ### POST /api/generate-fit
 
-生成 FIT 二进制文件并下载。
+生成运动文件（FIT / TCX / GPX / CSV）并下载。
 
-**请求体：** 与 `/api/preview` 相同。
+**请求体：** 与 `/api/preview` 相同，`format` 指定导出格式。
 
-**响应：** `application/vnd.ant.fit` 二进制文件，文件名 `run_{variantIndex}.fit`；响应头 `X-Elevation-Source` / `X-Elevation-Status` 标注本次海拔来源与状态。
+**响应：**
+
+| `format` | `Content-Type` | 文件名 |
+| -------- | -------------- | ------ |
+| `fit` | `application/vnd.ant.fit` | `run_{variantIndex}.fit` / `walk_{variantIndex}.fit` |
+| `tcx` | `application/gpx+xml` | `run_{variantIndex}.tcx` |
+| `gpx` | `application/gpx+xml` | `run_{variantIndex}.gpx` |
+| `csv` | `text/csv` | `run_{variantIndex}.csv` |
+
+响应头 `X-Elevation-Source` / `X-Elevation-Status` 标注本次海拔来源与状态。
+
+> FIT 文件写入 `sport` / `sub_sport` / `manufacturer_id` / `total_elapsed_time`（含 `elapsedExtraSeconds`）；`elevationSource=none` 时海拔字段留空。
 
 ### GET /api/health
 
@@ -423,6 +485,14 @@ TS-Hono/
 天地图瓦片需要 API Key。用户可在前端界面"地图设置"中输入自己的 Key。
 
 申请地址：<https://console.tianditu.gov.cn/>
+
+***
+
+## 可行性说明
+
+技术上，利用 Cloudflare Pages Functions（或 Workers）请求地图瓦片或搜索是可行的：在 `functions/` 下新增代理路由（如 `/api/proxy/{source}/{z}/{x}/{y}`），由云端边缘节点代替浏览器请求各瓦片源，从而绕开本地网络对部分国际瓦片源（OSM、CartoDB、ArcGIS 等）的访问限制，还能配合请求白名单校验、边缘缓存（`cf.cacheTtl`）并将 API Key 收敛到服务端。
+
+但本项目保持瓦片由浏览器**直接请求各瓦片源**，不引入服务端请求。
 
 ***
 

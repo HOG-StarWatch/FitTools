@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         crossorigin="anonymous" referrerpolicy="no-referrer" />
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=4" />
 </head>
 
 <body>
@@ -33,7 +33,7 @@
       <div class="card collapsible">
         <div class="card-header" onclick="toggleCard(this)">
           <span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
-          <span>地图设置</span>
+          <span>地图与绘制</span>
           <span class="collapse-icon"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg></span>
         </div>
         <div class="card-body">
@@ -70,28 +70,33 @@
             <input type="text" id="tiandituKeyInput" placeholder="天地图 Key" value="fc97d01c0e3e98289295da844e1f2dad">
             <a href="https://www.bilibili.com/video/BV1FhVhz6EEh/" target="_blank" class="key-link">申请教程</a>
           </div>
-          <div class="search-box">
+<div class="search-box">
+            <button id="getLocationBtn" class="btn-location"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 定位</button>
             <input type="text" id="searchInput" placeholder="搜索位置..." aria-label="搜索位置" onkeydown="if(event.key==='Enter')searchLocation()">
             <button class="btn-icon" onclick="searchLocation()" aria-label="搜索"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></button>
           </div>
           <div id="searchResult" class="search-result"></div>
-          <button id="getLocationBtn" class="btn-location"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 获取位置</button>
-        </div>
-      </div>
-
-      <div class="card collapsible">
-        <div class="card-header" onclick="toggleCard(this)">
-          <span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
-          <span>绘制工具</span>
-          <span class="collapse-icon"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg></span>
-        </div>
-        <div class="card-body">
+          <div class="elevation-source-row">
+            <label class="options-title" for="elevationSourceSelect">海拔数据源</label>
+            <select id="elevationSourceSelect" class="styled-select">
+              <option value="none" selected>不写入海拔（字段留空）</option>
+              <option value="open-elevation">Open-Elevation（真实海拔）</option>
+              <option value="opentopodata">OpenTopoData SRTM90（真实海拔）</option>
+              <option value="opentopodata-srtm30m">OpenTopoData SRTM30（真实海拔）</option>
+              <option value="opentopodata-aster30m">OpenTopoData ASTER30（真实海拔）</option>
+              <option value="opentopodata-eudem25m">OpenTopoData EUDEM25（真实海拔）</option>
+              <option value="open-meteo">Open-Meteo（真实海拔）</option>
+              <option value="off">模拟海拔（离线）</option>
+            </select>
+            <div id="elevationStatus" class="elevation-status"></div>
+          </div>
+          <hr class="card-divider">
           <div class="mode-switch">
             <button id="freeDrawMode" class="mode-btn active">自由绘制</button>
             <button id="shapeDrawMode" class="mode-btn">形状生成</button>
             <button id="editModeBtn" class="mode-btn">编辑</button>
           </div>
-          
+
           <div id="shapeGenerationPanel" class="shape-panel" style="display: none;">
             <div class="form-row">
               <select id="shapeType" class="styled-select">
@@ -120,7 +125,7 @@
         </div>
       </div>
 
-      <div class="card collapsible">
+      <div class="card collapsible collapsed">
         <div class="card-header" onclick="toggleCard(this)">
           <span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
           <span>当前路线</span>
@@ -131,11 +136,13 @@
           <div id="distanceInfo" class="distance-display">0.00 km</div>
           <div class="route-actions">
             <button id="undoBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h13a4 4 0 0 1 0 8H7"/><path d="M7 6l-4 4 4 4"/></svg> 回退</button>
-            <button id="closeRouteBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M2 12h20"/></svg> 闭合</button>
+            <button id="fitBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg> 纵览</button>
             <button id="clearRoute" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 清空</button>
             <button id="saveRouteBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg> 保存</button>
-            <button id="smoothBtn" class="btn-secondary" style="background:transparent;border-color:var(--accent);color:var(--accent)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/></svg> 平滑</button>
+            <button id="closeRouteBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M2 12h20"/></svg> 闭合</button>
+            <button id="reverseBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M21 5H8a4 4 0 0 0 0 8h8"/></svg> 反跑</button>
           </div>
+          <button id="smoothBtn" class="btn-secondary btn-full" style="background:transparent;border-color:var(--accent);color:var(--accent)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/></svg> 平滑</button>
           <div class="route-actions" style="margin-top:6px">
             <button id="exportGpxBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 导出 GPX</button>
             <button id="importGpxBtn" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入 GPX</button>
@@ -158,13 +165,43 @@
         </div>
       </div>
 
-      <div class="card collapsible">
+      <div class="card collapsible collapsed">
         <div class="card-header" onclick="toggleCard(this)">
           <span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
-          <span>运动参数</span>
+          <span>生成设置</span>
           <span class="collapse-icon"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg></span>
         </div>
         <div class="card-body">
+          <div class="card-section-title">运动参数</div>
+          <div class="param-grid">
+            <div class="param-item">
+              <label>运动类型</label>
+              <select id="sportTypeSelect" class="styled-select">
+                <option value="running" selected>跑步</option>
+                <option value="walking">健走</option>
+              </select>
+            </div>
+            <div class="param-item">
+              <label>设备品牌</label>
+              <div class="device-row">
+                <select id="deviceBrandSelect" class="styled-select">
+                  <option value="" selected>不指定 (Developer)</option>
+                  <option value="garmin">Garmin</option>
+                  <option value="coros">Coros</option>
+                  <option value="polar">Polar</option>
+                  <option value="suunto">Suunto</option>
+                  <option value="wahoo">Wahoo</option>
+                  <option value="huawei">Huawei (非官方)</option>
+                  <option value="xiaomi">Xiaomi (非官方)</option>
+                  <option value="amazfit">Amazfit (非官方)</option>
+                  <option value="development">Developer / 开发设备</option>
+                  <option value="custom">自定义…</option>
+                </select>
+                <input type="number" id="customManufacturer" min="0" max="65535" placeholder="0-65535" class="custom-manufacturer" style="display:none">
+                <button type="button" id="manufacturerTableBtn" class="info-btn" title="查看官方品牌对应表">官方表</button>
+              </div>
+            </div>
+          </div>
           <div class="param-grid">
             <div class="param-item">
               <label>静息心率</label>
@@ -192,17 +229,17 @@
               <label>GPS偏移</label>
               <input type="number" id="gpsDrift" value="0.1" min="0" max="1" step="0.01">
             </div>
+            <div class="param-item">
+              <label>身高 cm</label>
+              <input type="number" id="heightInput" value="170" min="120" max="220">
+            </div>
+            <div class="param-item">
+              <label>时长增加 s</label>
+              <input type="number" id="elapsedExtraInput" value="0" min="0" max="600">
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div class="card collapsible">
-        <div class="card-header" onclick="toggleCard(this)">
-          <span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
-          <span>导出设置</span>
-          <span class="collapse-icon"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg></span>
-        </div>
-        <div class="card-body">
+          <hr class="card-divider">
+          <div class="card-section-title">导出设置</div>
           <div class="export-count">
             <label>导出份数</label>
             <input type="number" id="exportCount" value="1" min="1" max="10">
@@ -214,14 +251,75 @@
               <span>多份打包为 ZIP</span>
             </label>
           </div>
-          <div class="elevation-source-row">
-            <label class="options-title" for="elevationSourceSelect">海拔数据源</label>
-            <select id="elevationSourceSelect" class="styled-select">
-              <option value="open-elevation" selected>Open-Elevation（真实海拔）</option>
-              <option value="opentopodata">OpenTopoData（真实海拔）</option>
-              <option value="off">模拟海拔（离线）</option>
-            </select>
-            <div id="elevationStatus" class="elevation-status"></div>
+          <div class="form-row-grid">
+            <div class="form-row">
+              <label class="options-title" for="exportFormatSelect">导出格式</label>
+              <select id="exportFormatSelect" class="styled-select">
+                <option value="fit" selected>FIT（Keep / 悦跑圈等主流 App）</option>
+                <option value="tcx">TCX（Garmin / Strava）</option>
+                <option value="gpx">GPX（轨迹通用）</option>
+                <option value="csv">CSV（数据表格）</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="options-title" for="workoutModeSelect">训练模式</label>
+              <select id="workoutModeSelect" class="styled-select">
+                <option value="steady" selected>匀速跑</option>
+                <option value="negative_split">负配速跑（前慢后快）</option>
+                <option value="interval">间歇跑（快慢交替）</option>
+                <option value="lsd">LSD 长距离慢跑</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row-grid">
+            <div class="form-row">
+              <label class="options-title" for="sportNameSelect">运动名称</label>
+              <select id="sportNameSelect" class="styled-select">
+                <option value="跑步" selected>跑步</option>
+                <option value="户外跑步">户外跑步</option>
+                <option value="室内跑步">室内跑步</option>
+                <option value="跑步机">跑步机</option>
+                <option value="越野跑">越野跑</option>
+                <option value="操场跑">操场跑</option>
+                <option value="障碍跑">障碍跑</option>
+                <option value="虚拟跑步">虚拟跑步</option>
+                <option value="健走">健走</option>
+                <option value="自定义">自定义</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="options-title" for="fitSubSportSelect">FIT 子运动</label>
+              <div class="sub-sport-flex">
+                <select id="fitSubSportSelect" class="styled-select">
+                  <option value="generic" selected>通用</option>
+                  <option value="treadmill">跑步机</option>
+                  <option value="street">公路</option>
+                  <option value="trail">越野</option>
+                  <option value="track">操场</option>
+                  <option value="indoorRunning">室内跑</option>
+                  <option value="obstacle">障碍跑</option>
+                  <option value="virtualActivity">虚拟跑</option>
+                  <option value="casualWalking">休闲走</option>
+                  <option value="indoorWalking">室内走</option>
+                </select>
+                <input type="number" id="customSubSport" value="" min="0" max="255" placeholder="0-255" title="自定义子运动数值，留空使用上方选项">
+              </div>
+            </div>
+          </div>
+          <div id="intervalConfig" class="interval-config" style="display:none">
+            <div class="form-row">
+              <label class="options-title" for="intervalExampleSelect">间歇模板</label>
+              <select id="intervalExampleSelect" class="styled-select">
+                <option value="10x0.4" selected>10 组 × 400m 快 + 慢</option>
+                <option value="8x0.8">8 组 × 800m 快 + 慢</option>
+                <option value="6x1.0">6 组 × 1000m 快 + 慢</option>
+                <option value="5x1.2">5 组 × 1200m 快 + 慢</option>
+              </select>
+            </div>
+            <div class="interval-inputs">
+              <label>组数 <input type="number" id="intervalReps" min="1" max="30" value="10"></label>
+              <label>快跑 km/组 <input type="number" id="intervalFastKm" min="0.1" step="0.1" value="0.4"></label>
+            </div>
           </div>
           <div class="export-options">
             <p class="options-title">传感器数据</p>
@@ -252,15 +350,14 @@
         </div>
       </div>
 
+      <div id="liveInfo" class="live-info"></div>
+
       <div class="action-buttons">
+        <div id="message" class="message"></div>
         <button id="generateFit" class="btn-generate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> 生成 FIT 文件</button>
         <button id="previewBtn" class="btn-preview"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> 预览曲线</button>
         <button id="getLocationBtnMobile" class="btn-location" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 定位</button>
       </div>
-
-      <div id="message" class="message"></div>
-
-      <div id="liveInfo" class="live-info"></div>
     </div>
 
     <div id="map"></div>
@@ -291,6 +388,7 @@
           <div class="stat-list">
             <div class="stat-row"><span class="stat-row-label">总距离</span><span class="stat-row-value" id="statDistance">-</span></div>
             <div class="stat-row"><span class="stat-row-label">总时长</span><span class="stat-row-value" id="statDuration">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">训练时长</span><span class="stat-row-value" id="statTrainingDuration">-</span></div>
             <div class="stat-row"><span class="stat-row-label">平均配速</span><span class="stat-row-value" id="statPace">-</span></div>
             <div class="stat-row"><span class="stat-row-label">卡路里</span><span class="stat-row-value" id="statCalories">-</span></div>
             <div class="stat-row"><span class="stat-row-label">平均心率</span><span class="stat-row-value" id="statHr">-</span></div>
@@ -303,6 +401,8 @@
             <div class="stat-row"><span class="stat-row-label">运动负荷</span><span class="stat-row-value" id="statLoad">-</span></div>
             <div class="stat-row"><span class="stat-row-label">总爬升</span><span class="stat-row-value" id="statAscent">-</span></div>
             <div class="stat-row"><span class="stat-row-label">总下降</span><span class="stat-row-value" id="statDescent">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">最高海拔</span><span class="stat-row-value" id="statMaxAlt">-</span></div>
+            <div class="stat-row"><span class="stat-row-label">最低海拔</span><span class="stat-row-value" id="statMinAlt">-</span></div>
             <div class="stat-row"><span class="stat-row-label">平均海拔</span><span class="stat-row-value" id="statAltitude">-</span></div>
           </div>
         </div>
@@ -345,12 +445,25 @@
     </div>
   </div>
 
+  <div id="manufacturerModal" class="modal">
+    <div class="modal-content manufacturer-modal">
+      <div class="modal-header">
+        <h3>官方品牌对应表（FitSDK 21.158.0）</h3>
+        <button class="modal-close" id="manufacturerModalClose" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body manufacturer-modal-body">
+        <p class="manufacturer-hint">以下为 Garmin FIT SDK 官方 manufacturer_id 对应表，点击任意条目可自动填入自定义数值。</p>
+        <div id="manufacturerTableBody" class="manufacturer-grid"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="./main.js"></script>
+  <script src="./main.js?v=4"></script>
 </body>
 </html>

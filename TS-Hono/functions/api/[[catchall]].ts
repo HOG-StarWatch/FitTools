@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { rateLimit } from '../../src/middleware/rate-limit';
-import { processRouteRequest, generateFitFile, applySensorOptions, RequestBody } from '../../src/lib';
-import { fetchAltitudesOrNull, DEFAULT_ELEVATION_CONFIG, parseElevationSource } from '../../src/elevation';
+import type { RequestBody } from '../../src/lib';
+import { handlePreview, handleGenerate } from '../../src/handlers';
 import { version } from '../../package.json';
 
 type Bindings = {
@@ -42,64 +42,17 @@ app.get('/api/status', async (c) => {
 });
 
 app.post('/api/preview', async (c) => {
-  try {
-    const body = await c.req.json<RequestBody>();
-    const result = processRouteRequest(body || {});
-    if ('error' in result) return c.json({ error: result.error }, 400);
-
-    const elevationConfig = { ...DEFAULT_ELEVATION_CONFIG };
-    const requestSource = parseElevationSource(body.elevationSource);
-    if (requestSource) elevationConfig.source = requestSource;
-    const elevation = await fetchAltitudesOrNull(result.samples.map(s => ({ lat: s.lat, lng: s.lng })), elevationConfig);
-
-    let samples = result.samples;
-    if (elevation.altitudes) {
-      samples = result.samples.map((s, i) => ({ ...s, altitude: elevation.altitudes![i] }));
-    }
-    samples = applySensorOptions(samples, {
-      includeHeartRate: body.includeHeartRate,
-      includePower: body.includePower,
-      includeCadence: body.includeCadence,
-      includeGaitData: body.includeGaitData,
-    });
-
-    return c.json({
-      totalDistanceMeters: result.totalDist,
-      totalDurationSec: result.totalDurationSec,
-      samples,
-      calories: result.calories,
-      elevation: {
-        source: elevation.source,
-        status: elevation.status,
-        message: elevation.message,
-      },
-    });
-  } catch (e) {
-    console.error(e);
-    return c.json({ error: '生成预览失败' }, 500);
-  }
+  const body = await c.req.json<RequestBody>().catch(() => ({}));
+  const res = await handlePreview(body);
+  return new Response(res.body, {
+    status: res.status,
+    headers: res.headers,
+  });
 });
 
 app.post('/api/generate-fit', async (c) => {
-  try {
-    const body = await c.req.json<RequestBody>();
-    const result = processRouteRequest(body || {});
-    if ('error' in result) return c.json({ error: result.error }, 400);
-    const sensorOptions = {
-      includeHeartRate: body.includeHeartRate !== false,
-      includePower: body.includePower !== false,
-      includeCadence: body.includeCadence !== false,
-      includeGaitData: body.includeGaitData !== false,
-    };
-    const elevationConfig = { ...DEFAULT_ELEVATION_CONFIG };
-    const requestSource = parseElevationSource(body.elevationSource);
-    if (requestSource) elevationConfig.source = requestSource;
-    const elevation = await fetchAltitudesOrNull(result.samples.map(s => ({ lat: s.lat, lng: s.lng })), elevationConfig);
-    return generateFitFile(result, sensorOptions, elevation.altitudes, elevation);
-  } catch (e) {
-    console.error(e);
-    return c.json({ error: '生成 FIT 文件失败' }, 500);
-  }
+  const body = await c.req.json<RequestBody>().catch(() => ({}));
+  return handleGenerate(body);
 });
 
 const handleRequest = (context: {

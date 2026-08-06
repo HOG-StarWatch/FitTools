@@ -4,18 +4,12 @@
 
 function toggleCard(header) {
   const card = header.closest('.card');
-  const body = card.querySelector('.card-body');
-  const icon = header.querySelector('.collapse-icon');
-  
-  if (card.classList.contains('collapsed')) {
-    card.classList.remove('collapsed');
-    body.style.display = 'block';
-    icon.textContent = '▼';
-  } else {
-    card.classList.add('collapsed');
-    body.style.display = 'none';
-    icon.textContent = '▶';
-  }
+  const willOpen = card.classList.contains('collapsed');
+
+  card.closest('.sidebar')?.querySelectorAll('.card').forEach(c => {
+    if (c !== card) c.classList.add('collapsed');
+  });
+  card.classList.toggle('collapsed', !willOpen);
 }
 
 // ==================== 三主题系统模块 ====================
@@ -582,26 +576,26 @@ function switchDrawMode(mode) {
   if (mode === 'free') {
     currentDrawMode = 'free';
     isEditMode = false;
-    if (freeDrawBtn) freeDrawBtn.style.background = '#2563eb';
-    if (shapeDrawBtn) shapeDrawBtn.style.background = '#9ca3af';
-    if (editBtn) editBtn.style.background = '#9ca3af';
+    if (freeDrawBtn) freeDrawBtn.classList.add('active');
+    if (shapeDrawBtn) shapeDrawBtn.classList.remove('active');
+    if (editBtn) editBtn.classList.remove('active');
     if (shapePanel) shapePanel.style.display = 'none';
     shapeManipulator.deactivate();
     routeEditor.disable();
   } else if (mode === 'shape') {
     currentDrawMode = 'shape';
     isEditMode = false;
-    if (shapeDrawBtn) shapeDrawBtn.style.background = '#2563eb';
-    if (freeDrawBtn) freeDrawBtn.style.background = '#9ca3af';
-    if (editBtn) editBtn.style.background = '#9ca3af';
+    if (shapeDrawBtn) shapeDrawBtn.classList.add('active');
+    if (freeDrawBtn) freeDrawBtn.classList.remove('active');
+    if (editBtn) editBtn.classList.remove('active');
     if (shapePanel) shapePanel.style.display = 'block';
     routeEditor.disable();
   } else if (mode === 'edit') {
     currentDrawMode = 'free';
     isEditMode = true;
-    if (editBtn) editBtn.style.background = '#2563eb';
-    if (freeDrawBtn) freeDrawBtn.style.background = '#9ca3af';
-    if (shapeDrawBtn) shapeDrawBtn.style.background = '#9ca3af';
+    if (editBtn) editBtn.classList.add('active');
+    if (freeDrawBtn) freeDrawBtn.classList.remove('active');
+    if (shapeDrawBtn) shapeDrawBtn.classList.remove('active');
     if (shapePanel) shapePanel.style.display = 'none';
     shapeManipulator.deactivate();
     routeEditor.enable();
@@ -627,7 +621,7 @@ document.getElementById('editModeBtn')?.addEventListener('click', (e) => {
   if (isEditMode) {
     routeEditor.disable();
     isEditMode = false;
-    btn.style.background = '#9ca3af';
+    btn.classList.remove('active');
     updateMessage('已退出编辑模式');
   } else {
     switchDrawMode('edit');
@@ -1501,6 +1495,24 @@ function closeRoute() {
   updateRouteDisplay();
 }
 
+function fitRouteToMap() {
+  if (routePoints.length < 2 || !polyline) {
+    updateMessage('当前没有路线', true);
+    return;
+  }
+  map.fitBounds(polyline.getBounds().pad(0.1));
+}
+
+function reverseRoute() {
+  if (routePoints.length < 2) { updateMessage('至少需要两个点才能反跑', true); return; }
+  pushHistory();
+  routePoints.reverse();
+  smoothedPoints = null;
+  if (smoothPolyline) { map.removeLayer(smoothPolyline); smoothPolyline = null; }
+  updateMessage('路线方向已反转');
+  updateRouteDisplay();
+}
+
 function encodePolylineValue(v) {
   if (v < 0) { v = ~(v << 1); }
   else { v = v << 1; }
@@ -1672,8 +1684,10 @@ function calculateLapsByDistance() {
 }
 
 document.getElementById('undoBtn')?.addEventListener('click', undo);
+document.getElementById('fitBtn')?.addEventListener('click', fitRouteToMap);
 document.getElementById('clearRoute')?.addEventListener('click', clearRoute);
 document.getElementById('closeRouteBtn')?.addEventListener('click', closeRoute);
+document.getElementById('reverseBtn')?.addEventListener('click', reverseRoute);
 document.getElementById('calculateLapsBtn')?.addEventListener('click', calculateLapsByDistance);
 document.getElementById('smoothBtn')?.addEventListener('click', applySmoothing);
 document.getElementById('lapCount')?.addEventListener('input', updateDistanceInfo);
@@ -1717,6 +1731,191 @@ function rebuildExportTimes() {
   }
 }
 
+// ==================== 运动类型 / 训练模式 UI 联动 ====================
+
+const SPORT_NAME_PREFIXES = {
+  '户外跑步': 'outdoor-run',
+  '室内跑步': 'indoor-run',
+  '跑步机': 'treadmill',
+  '越野跑': 'trail-run',
+  '操场跑': 'track-run',
+  '障碍跑': 'obstacle-run',
+  '虚拟跑步': 'virtual-run',
+  '健走': 'walk',
+};
+
+const OFFICIAL_MANUFACTURERS = [
+  [1, 'GARMIN'], [2, 'GARMIN_FR405_ANTFS'], [3, 'ZEPHYR'], [4, 'DAYTON'], [5, 'IDT'], [6, 'SRM'],
+  [7, 'QUARQ'], [8, 'IBIKE'], [9, 'SARIS'], [10, 'SPARK_HK'], [11, 'TANITA'], [12, 'ECHOWELL'],
+  [13, 'DYNASTREAM_OEM'], [14, 'NAUTILUS'], [15, 'DYNASTREAM'], [16, 'TIMEX'], [17, 'METRIGEAR'],
+  [18, 'XELIC'], [19, 'BEURER'], [20, 'CARDIOSPORT'], [21, 'A_AND_D'], [22, 'HMM'], [23, 'SUUNTO'],
+  [24, 'THITA_ELEKTRONIK'], [25, 'GPULSE'], [26, 'CLEAN_MOBILE'], [27, 'PEDAL_BRAIN'], [28, 'PEAKSWARE'],
+  [29, 'SAXONAR'], [30, 'LEMOND_FITNESS'], [31, 'DEXCOM'], [32, 'WAHOO_FITNESS'], [33, 'OCTANE_FITNESS'],
+  [34, 'ARCHINOETICS'], [35, 'THE_HURT_BOX'], [36, 'CITIZEN_SYSTEMS'], [37, 'MAGELLAN'], [38, 'OSYNCE'],
+  [39, 'HOLUX'], [40, 'CONCEPT2'], [41, 'SHIMANO'], [42, 'ONE_GIANT_LEAP'], [43, 'ACE_SENSOR'],
+  [44, 'BRIM_BROTHERS'], [45, 'XPLOVA'], [46, 'PERCEPTION_DIGITAL'], [47, 'BF1SYSTEMS'], [48, 'PIONEER'],
+  [49, 'SPANTEC'], [50, 'METALOGICS'], [51, '_4IIIIS'], [52, 'SEIKO_EPSON'], [53, 'SEIKO_EPSON_OEM'],
+  [54, 'IFOR_POWELL'], [55, 'MAXWELL_GUIDER'], [56, 'STAR_TRAC'], [57, 'BREAKAWAY'],
+  [58, 'ALATECH_TECHNOLOGY_LTD'], [59, 'MIO_TECHNOLOGY_EUROPE'], [60, 'ROTOR'], [61, 'GEONAUTE'],
+  [62, 'ID_BIKE'], [63, 'SPECIALIZED'], [64, 'WTEK'], [65, 'PHYSICAL_ENTERPRISES'],
+  [66, 'NORTH_POLE_ENGINEERING'], [67, 'BKOOL'], [68, 'CATEYE'], [69, 'STAGES_CYCLING'], [70, 'SIGMASPORT'],
+  [71, 'TOMTOM'], [72, 'PERIPEDAL'], [73, 'WATTBIKE'], [76, 'MOXY'], [77, 'CICLOSPORT'], [78, 'POWERBAHN'],
+  [79, 'ACORN_PROJECTS_APS'], [80, 'LIFEBEAM'], [81, 'BONTRAGER'], [82, 'WELLGO'], [83, 'SCOSCHE'],
+  [84, 'MAGURA'], [85, 'WOODWAY'], [86, 'ELITE'], [87, 'NIELSEN_KELLERMAN'], [88, 'DK_CITY'], [89, 'TACX'],
+  [90, 'DIRECTION_TECHNOLOGY'], [91, 'MAGTONIC'], [92, '_1PARTCARBON'], [93, 'INSIDE_RIDE_TECHNOLOGIES'],
+  [94, 'SOUND_OF_MOTION'], [95, 'STRYD'], [96, 'ICG'], [97, 'MIPULSE'], [98, 'BSX_ATHLETICS'], [99, 'LOOK'],
+  [100, 'CAMPAGNOLO_SRL'], [101, 'BODY_BIKE_SMART'], [102, 'PRAXISWORKS'], [103, 'LIMITS_TECHNOLOGY'],
+  [104, 'TOPACTION_TECHNOLOGY'], [105, 'COSINUSS'], [106, 'FITCARE'], [107, 'MAGENE'],
+  [108, 'GIANT_MANUFACTURING_CO'], [109, 'TIGRASPORT'], [110, 'SALUTRON'], [111, 'TECHNOGYM'],
+  [112, 'BRYTON_SENSORS'], [113, 'LATITUDE_LIMITED'], [114, 'SOARING_TECHNOLOGY'], [115, 'IGPSPORT'],
+  [116, 'THINKRIDER'], [117, 'GOPHER_SPORT'], [118, 'WATERROWER'], [119, 'ORANGETHEORY'], [120, 'INPEAK'],
+  [121, 'KINETIC'], [122, 'JOHNSON_HEALTH_TECH'], [123, 'POLAR_ELECTRO'], [124, 'SEESENSE'],
+  [125, 'NCI_TECHNOLOGY'], [126, 'IQSQUARE'], [127, 'LEOMO'], [128, 'IFIT_COM'], [129, 'COROS_BYTE'],
+  [130, 'VERSA_DESIGN'], [131, 'CHILEAF'], [132, 'CYCPLUS'], [133, 'GRAVAA_BYTE'], [134, 'SIGEYI'],
+  [135, 'COOSPO'], [136, 'GEOID'], [137, 'BOSCH'], [138, 'KYTO'], [139, 'KINETIC_SPORTS'],
+  [140, 'DECATHLON_BYTE'], [141, 'TQ_SYSTEMS'], [142, 'TAG_HEUER'], [143, 'KEISER_FITNESS'],
+  [144, 'ZWIFT_BYTE'], [145, 'PORSCHE_EP'], [146, 'BLACKBIRD'], [147, 'MEILAN_BYTE'], [148, 'EZON'],
+  [149, 'LAISI'], [150, 'MYZONE'], [151, 'ABAWO'], [152, 'BAFANG'], [153, 'LUHONG_TECHNOLOGY'],
+  [255, 'DEVELOPMENT'], [257, 'HEALTHANDLIFE'], [258, 'LEZYNE'], [259, 'SCRIBE_LABS'], [260, 'ZWIFT'],
+  [261, 'WATTEAM'], [262, 'RECON'], [263, 'FAVERO_ELECTRONICS'], [264, 'DYNOVELO'], [265, 'STRAVA'],
+  [266, 'PRECOR'], [267, 'BRYTON'], [268, 'SRAM'], [269, 'NAVMAN'], [270, 'COBI'], [271, 'SPIVI'],
+  [272, 'MIO_MAGELLAN'], [273, 'EVESPORTS'], [274, 'SENSITIVUS_GAUGE'], [275, 'PODOON'],
+  [276, 'LIFE_TIME_FITNESS'], [277, 'FALCO_E_MOTORS'], [278, 'MINOURA'], [279, 'CYCLIQ'], [280, 'LUXOTTICA'],
+  [281, 'TRAINER_ROAD'], [282, 'THE_SUFFERFEST'], [283, 'FULLSPEEDAHEAD'], [284, 'VIRTUALTRAINING'],
+  [285, 'FEEDBACKSPORTS'], [286, 'OMATA'], [287, 'VDO'], [288, 'MAGNETICDAYS'], [289, 'HAMMERHEAD'],
+  [290, 'KINETIC_BY_KURT'], [291, 'SHAPELOG'], [292, 'DABUZIDUO'], [293, 'JETBLACK'], [294, 'COROS'],
+  [295, 'VIRTUGO'], [296, 'VELOSENSE'], [297, 'CYCLIGENTINC'], [298, 'TRAILFORKS'],
+  [299, 'MAHLE_EBIKEMOTION'], [300, 'NURVV'], [301, 'MICROPROGRAM'], [302, 'ZONE5CLOUD'], [303, 'GREENTEG'],
+  [304, 'YAMAHA_MOTORS'], [305, 'WHOOP'], [306, 'GRAVAA'], [307, 'ONELAP'], [308, 'MONARK_EXERCISE'],
+  [309, 'FORM'], [310, 'DECATHLON'], [311, 'SYNCROS'], [312, 'HEATUP'], [313, 'CANNONDALE'],
+  [314, 'TRUE_FITNESS'], [315, 'RGT_CYCLING'], [316, 'VASA'], [317, 'RACE_REPUBLIC'], [318, 'FAZUA'],
+  [319, 'OREKA_TRAINING'], [320, 'LSEC'], [321, 'LULULEMON_STUDIO'], [322, 'SHANYUE'], [323, 'SPINNING_MDA'],
+  [324, 'HILLDATING'], [325, 'AERO_SENSOR'], [326, 'NIKE'], [327, 'MAGICSHINE'], [328, 'ICTRAINER'],
+  [329, 'ABSOLUTE_CYCLING'], [330, 'EO_SWIMBETTER'], [331, 'MYWHOOSH'], [332, 'RAVEMEN'],
+  [333, 'TEKTRO_RACING_PRODUCTS'], [334, 'DARAD_INNOVATION_CORPORATION'], [335, 'CYCLOPTIM'], [337, 'RUNNA'],
+  [339, 'ZEPP'], [340, 'PELOTON'], [341, 'CARV'], [342, 'TISSOT'], [345, 'REAL_VELO'], [5759, 'ACTIGRAPHCORP'],
+  [65535, 'INVALID'],
+];
+
+function syncDeviceUI() {
+  const customInput = document.getElementById("customManufacturer");
+  if (!customInput) return;
+  customInput.style.display =
+    document.getElementById("deviceBrandSelect")?.value === "custom" ? "block" : "none";
+}
+
+function resolveDeviceTypeFromUI() {
+  const brand = document.getElementById("deviceBrandSelect")?.value;
+  if (brand === "custom") {
+    const n = parseInt(document.getElementById("customManufacturer")?.value, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 65535) return n;
+    return undefined;
+  }
+  return brand || undefined;
+}
+
+function openManufacturerModal() {
+  const modal = document.getElementById('manufacturerModal');
+  if (!modal) return;
+  const tbody = document.getElementById('manufacturerTableBody');
+  if (tbody && tbody.children.length === 0) {
+    tbody.innerHTML = OFFICIAL_MANUFACTURERS
+      .map(([id, name]) => `<div class="mfg-cell" data-id="${id}" title="点击填入自定义数值"><span class="mfg-id">${id}</span><span class="mfg-name">${name}</span></div>`)
+      .join('');
+  }
+  modal.classList.add('active');
+}
+
+function fillManufacturerFromTable(id) {
+  const sel = document.getElementById("deviceBrandSelect");
+  if (sel) sel.value = "custom";
+  const inp = document.getElementById("customManufacturer");
+  if (inp) inp.value = id;
+  syncDeviceUI();
+  closeManufacturerModal();
+}
+
+document.getElementById('manufacturerTableBody')?.addEventListener('click', (e) => {
+  const cell = e.target.closest('.mfg-cell');
+  if (!cell) return;
+  const id = parseInt(cell.dataset.id, 10);
+  if (Number.isFinite(id)) fillManufacturerFromTable(id);
+});
+
+function closeManufacturerModal() {
+  document.getElementById('manufacturerModal')?.classList.remove('active');
+}
+
+document.getElementById('manufacturerTableBtn')?.addEventListener('click', openManufacturerModal);
+document.getElementById('manufacturerModalClose')?.addEventListener('click', closeManufacturerModal);
+document.getElementById('deviceBrandSelect')?.addEventListener('change', syncDeviceUI);
+document.getElementById('manufacturerModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'manufacturerModal') closeManufacturerModal();
+});
+
+function collectSharedParams() {
+  const sportType = document.getElementById("sportTypeSelect")?.value || "running";
+  return {
+    sportType,
+    heightCm: Number(document.getElementById("heightInput")?.value) || 170,
+    deviceType: resolveDeviceTypeFromUI(),
+    sportName: document.getElementById("sportNameSelect")?.value || (sportType === "walking" ? "健走" : "跑步"),
+    fitSubSport: document.getElementById("fitSubSportSelect")?.value || "generic",
+    customSubSport: document.getElementById("customSubSport")?.value || undefined,
+    workoutMode: document.getElementById("workoutModeSelect")?.value || "steady",
+    intervalReps: parseInt(document.getElementById("intervalReps")?.value) || 10,
+    intervalFastKm: parseFloat(document.getElementById("intervalFastKm")?.value) || 0.4,
+    elapsedExtraSeconds: parseInt(document.getElementById("elapsedExtraInput")?.value) || 0,
+    format: document.getElementById("exportFormatSelect")?.value || "fit",
+  };
+}
+
+function filePrefixFor(shared) {
+  if (shared.sportType === "walking") return "walk";
+  return SPORT_NAME_PREFIXES[shared.sportName] || "run";
+}
+
+function syncWorkoutUI() {
+  const interval = document.getElementById("workoutModeSelect")?.value === "interval";
+  const cfg = document.getElementById("intervalConfig");
+  if (cfg) cfg.style.display = interval ? "block" : "none";
+}
+
+function syncSportTypeUI() {
+  const walking = document.getElementById("sportTypeSelect")?.value === "walking";
+  const cadenceInput = document.getElementById("avgCadence");
+  if (walking) {
+    if (!cadenceInput?.value || Number(cadenceInput.value) === 170) cadenceInput.value = 100;
+  } else if (Number(cadenceInput?.value) === 100) {
+    cadenceInput.value = 170;
+  }
+  const hrInputs = [document.getElementById("hrRest"), document.getElementById("hrMax")];
+  hrInputs.forEach(el => {
+    if (el && el.parentElement) el.parentElement.style.display = walking ? "none" : "";
+  });
+  const hrCheck = document.getElementById("includeHeartRate");
+  if (hrCheck) {
+    const wrapper = hrCheck.closest("label.checkbox-label");
+    if (wrapper) wrapper.style.display = walking ? "none" : "";
+  }
+  document.querySelectorAll(".export-row-2").forEach(row => {
+    row.style.display = walking ? "none" : "";
+  });
+  const nameSel = document.getElementById("sportNameSelect");
+  if (walking && nameSel && nameSel.value !== "健走") nameSel.value = "健走";
+  if (!walking && nameSel && nameSel.value === "健走") nameSel.value = "跑步";
+}
+
+document.getElementById("sportTypeSelect")?.addEventListener("change", syncSportTypeUI);
+document.getElementById("workoutModeSelect")?.addEventListener("change", syncWorkoutUI);
+document.getElementById("intervalExampleSelect")?.addEventListener("change", (e) => {
+  const [reps, fastKm] = e.target.value.split("x");
+  const repsInput = document.getElementById("intervalReps");
+  const fastInput = document.getElementById("intervalFastKm");
+  if (repsInput) repsInput.value = reps;
+  if (fastInput) fastInput.value = fastKm;
+});
+
 // ==================== FIT文件生成模块 ====================
 
 async function generateFit() {
@@ -1730,6 +1929,10 @@ async function generateFit() {
   const hrMax = parseInt(document.getElementById("hrMax")?.value) || 180;
   const lapCount = Math.max(1, parseFloat(document.getElementById("lapCount")?.value) || 1);
   const exportCount = Math.max(1, Math.min(10, parseInt(document.getElementById("exportCount")?.value) || 1));
+  const shared = collectSharedParams();
+  const walking = shared.sportType === "walking";
+  const fileExt = shared.format === "fit" ? "fit" : shared.format;
+  const filePrefix = filePrefixFor(shared);
   
   const timeInputs = document.querySelectorAll(".export-time-input");
   const paceMinInputs = document.querySelectorAll(".export-pace-min");
@@ -1747,7 +1950,7 @@ async function generateFit() {
   document.getElementById("generateFit").disabled = true;
   document.getElementById("previewBtn").disabled = true;
   
-  showGeneratingModal('正在生成 FIT 文件...');
+  showGeneratingModal(`正在生成 ${fileExt.toUpperCase()} 文件...`);
   
   const tzOffset = -new Date().getTimezoneOffset();
   const tzSign = tzOffset >= 0 ? '+' : '-';
@@ -1763,7 +1966,7 @@ async function generateFit() {
   
   try {
     for (let i = 0; i < exportCount; i++) {
-      updateGeneratingModal(`正在生成第 ${i + 1}/${exportCount} 个 FIT 文件...`);
+      updateGeneratingModal(`正在生成第 ${i + 1}/${exportCount} 个 ${fileExt.toUpperCase()} 文件...`);
       
       const inputVal = timeInputs[i]?.value;
       if (!inputVal || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(inputVal)) {
@@ -1775,9 +1978,9 @@ async function generateFit() {
       
       const pm = parseFloat(paceMinInputs[i]?.value) || 0;
       const ps = parseFloat(paceSecInputs[i]?.value) || 0;
-      const filePaceSecondsPerKm = pm * 60 + ps;
-      
-      if (!filePaceSecondsPerKm || filePaceSecondsPerKm <= 0) {
+      const filePaceSecondsPerKm = walking ? 720 : pm * 60 + ps;
+
+      if (!walking && (!filePaceSecondsPerKm || filePaceSecondsPerKm <= 0)) {
         failCount++;
         lastError = `第 ${i + 1} 分配速无效`;
         continue;
@@ -1786,9 +1989,9 @@ async function generateFit() {
       const weightKg = Number(document.getElementById("weightInput")?.value) || 65;
       const powerFactor = parseFloat(document.getElementById("powerFactor")?.value) || 1.3;
       const gpsDrift = parseFloat(document.getElementById("gpsDrift")?.value) || 0;
-      const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || 170;
+      const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || (walking ? 100 : 170);
       const elevationSource = document.getElementById("elevationSourceSelect")?.value || 'open-elevation';
-      const includeHeartRate = document.getElementById("includeHeartRate")?.checked ?? true;
+      const includeHeartRate = (walking ? false : document.getElementById("includeHeartRate")?.checked) ?? true;
       const includePower = document.getElementById("includePower")?.checked ?? true;
       const includeCadence = document.getElementById("includeCadence")?.checked ?? true;
       const includeGaitData = document.getElementById("includeGaitData")?.checked ?? true;
@@ -1804,7 +2007,18 @@ async function generateFit() {
             hrRest, hrMax, lapCount, variantIndex: i + 1,
             weightKg, powerFactor, gpsDrift, avgCadence,
             elevationSource,
-            includeHeartRate, includePower, includeCadence, includeGaitData
+            includeHeartRate, includePower, includeCadence, includeGaitData,
+            sportType: shared.sportType,
+            heightCm: shared.heightCm,
+            deviceType: shared.deviceType,
+            sportName: shared.sportName,
+            fitSubSport: shared.fitSubSport,
+            customSubSport: shared.customSubSport,
+            workoutMode: shared.workoutMode,
+            intervalReps: shared.intervalReps,
+            intervalFastKm: shared.intervalFastKm,
+            elapsedExtraSeconds: shared.elapsedExtraSeconds,
+            format: shared.format
           })
         });
         
@@ -1816,7 +2030,7 @@ async function generateFit() {
         }
         
         const blob = await res.blob();
-        fitBlobs.push({ blob, name: `run_${i + 1}.fit` });
+        fitBlobs.push({ blob, name: `${filePrefix}_${i + 1}.${fileExt}` });
         successCount++;
         lastElevationInfo = {
           source: res.headers.get('x-elevation-source'),
@@ -1858,14 +2072,14 @@ async function generateFit() {
     }
     
     const summary = successCount > 0
-      ? `已生成 ${successCount} 个 FIT 文件${failCount > 0 ? `，${failCount} 个失败` : ''}`
+      ? `已生成 ${successCount} 个 ${fileExt.toUpperCase()} 文件${failCount > 0 ? `，${failCount} 个失败` : ''}`
       : `生成失败${lastError ? '：' + lastError : ''}`;
     
     updateGeneratingModal(
       summary,
-      failCount === 0
+      failCount === 0 && shared.format === 'fit'
         ? `请前往「Keep App → 我的 → 我的数据 → 运动数据同步 → 运动数据文件导入」选择文件上传<br><br>点击左上角图标可赞赏支持开源项目`
-        : lastError
+        : (failCount === 0 ? '文件已下载，点击左上角图标可赞赏支持开源项目' : lastError)
     );
     updateMessage(summary);
     setElevationStatus(lastElevationInfo);
@@ -1896,6 +2110,7 @@ function renderPreviewStats(preview) {
   const n = samples.length;
   if (!n) return;
 
+  const stats = preview.stats || null;
   const totalDist = preview.totalDistanceMeters || 0;
   const totalSec = preview.totalDurationSec || 0;
   const calories = preview.calories || 0;
@@ -1905,6 +2120,7 @@ function renderPreviewStats(preview) {
   let hrCount = 0, cadCount = 0, powerCount = 0;
   let groundCount = 0, flightCount = 0, vertCount = 0;
   let sumAltitude = 0, altCount = 0, totalAscent = 0, totalDescent = 0;
+  let maxAlt = -Infinity, minAlt = Infinity;
 
   for (const s of samples) {
     if (s.heartRate) { sumHr += s.heartRate; hrCount++; }
@@ -1914,7 +2130,11 @@ function renderPreviewStats(preview) {
     if (s.flightTime) { sumFlight += s.flightTime; flightCount++; }
     if (s.verticalOscillation) { sumVert += s.verticalOscillation; vertCount++; }
     if (s.speed) sumSpeed += s.speed;
-    if (typeof s.altitude === 'number') { sumAltitude += s.altitude; altCount++; }
+    if (typeof s.altitude === 'number') {
+      sumAltitude += s.altitude; altCount++;
+      if (s.altitude > maxAlt) maxAlt = s.altitude;
+      if (s.altitude < minAlt) minAlt = s.altitude;
+    }
   }
 
   for (let i = 1; i < samples.length; i++) {
@@ -1944,7 +2164,11 @@ function renderPreviewStats(preview) {
   const durationSec = Math.round(totalSec % 60);
   const distKm = (totalDist / 1000).toFixed(2);
 
-  const load = avgHr ? Math.round(totalSec * (avgHr / 200) * 0.1) : 0;
+  const trainingSec = stats?.trainingDurationSec ?? totalSec;
+  const trainingMin = Math.floor(trainingSec / 60);
+  const trainingSecPart = Math.round(trainingSec % 60);
+
+  const load = stats?.trainingLoad || (avgHr ? Math.round(totalSec * (avgHr / 200) * 0.1) : 0);
 
   const setText = (id, val) => {
     const el = document.getElementById(id);
@@ -1953,6 +2177,7 @@ function renderPreviewStats(preview) {
 
   setText('statDistance', `${distKm} km`);
   setText('statDuration', `${durationMin}:${durationSec.toString().padStart(2, '0')}`);
+  setText('statTrainingDuration', `${trainingMin}:${trainingSecPart.toString().padStart(2, '0')}`);
   setText('statPace', `${paceMin}'${paceSec.toString().padStart(2, '0')}"`);
   setText('statCalories', `${calories} kcal`);
   setText('statHr', avgHr ? `${avgHr} bpm` : '—');
@@ -1965,6 +2190,10 @@ function renderPreviewStats(preview) {
   setText('statLoad', load ? `${load}` : '—');
   setText('statAscent', altCount > 1 ? `${Math.round(totalAscent)} m` : '—');
   setText('statDescent', altCount > 1 ? `${Math.round(totalDescent)} m` : '—');
+  const maxAltVal = stats?.maxElevation ?? (Number.isFinite(maxAlt) ? maxAlt : 0);
+  const minAltVal = stats?.minElevation ?? (Number.isFinite(minAlt) ? minAlt : 0);
+  setText('statMaxAlt', altCount ? `${Math.round(maxAltVal)} m` : '—');
+  setText('statMinAlt', altCount ? `${Math.round(minAltVal)} m` : '—');
   setText('statAltitude', altCount ? `${Math.round(sumAltitude / altCount)} m` : '—');
 
   const statsEl = document.getElementById('previewStats');
@@ -1986,7 +2215,10 @@ document.getElementById('previewModal')?.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closePreviewModal();
+  if (e.key === 'Escape') {
+    closePreviewModal();
+    closeManufacturerModal();
+  }
 });
 
 function setElevationStatus(info) {
@@ -1997,15 +2229,25 @@ function setElevationStatus(info) {
     el.textContent = '';
     return;
   }
-  const sourceNames = { 'open-elevation': 'Open-Elevation', 'opentopodata': 'OpenTopoData', 'off': '模拟' };
+  const sourceNames = {
+    'open-elevation': 'Open-Elevation',
+    'opentopodata': 'OpenTopoData SRTM90',
+    'opentopodata-srtm30m': 'OpenTopoData SRTM30',
+    'opentopodata-aster30m': 'OpenTopoData ASTER30',
+    'opentopodata-eudem25m': 'OpenTopoData EUDEM25',
+    'open-meteo': 'Open-Meteo',
+    'off': '模拟',
+    'none': '无海拔'
+  };
   const sourceName = sourceNames[info.source] || info.source || '';
   let message = info.message || '';
   if (!message) {
     if (info.status === 'live') message = `已获取真实海拔（${sourceName}）`;
     else if (info.status === 'fallback') message = `${sourceName} 获取失败，已回退模拟海拔`;
+    else if (info.status === 'none') message = '不写入海拔（FIT 海拔字段留空）';
     else message = '模拟海拔（离线生成）';
   }
-  el.className = `elevation-status ${info.status === 'live' ? 'ok' : info.status === 'fallback' ? 'warn' : 'muted'}`;
+  el.className = `elevation-status ${info.status === 'live' ? 'ok' : info.status === 'fallback' ? 'warn' : info.status === 'none' ? 'none' : 'muted'}`;
   el.textContent = message;
 }
 
@@ -2098,9 +2340,11 @@ async function previewActivity() {
   
   const pm = parseFloat(paceMinInputs[0]?.value) || 0;
   const ps = parseFloat(paceSecInputs[0]?.value) || 0;
-  const paceSecondsPerKm = pm * 60 + ps;
-  
-  if (!paceSecondsPerKm || paceSecondsPerKm <= 0) {
+  const shared = collectSharedParams();
+  const walking = shared.sportType === "walking";
+  const paceSecondsPerKm = walking ? 720 : pm * 60 + ps;
+
+  if (!walking && (!paceSecondsPerKm || paceSecondsPerKm <= 0)) {
     updateMessage("配速无效", true);
     return;
   }
@@ -2111,9 +2355,9 @@ async function previewActivity() {
   const weightKg = Number(document.getElementById("weightInput")?.value) || 65;
   const powerFactor = parseFloat(document.getElementById("powerFactor")?.value) || 1.3;
   const gpsDrift = parseFloat(document.getElementById("gpsDrift")?.value) || 0;
-  const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || 170;
+  const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || (walking ? 100 : 170);
   const elevationSource = document.getElementById("elevationSourceSelect")?.value || 'open-elevation';
-  const includeHeartRate = document.getElementById("includeHeartRate")?.checked ?? true;
+  const includeHeartRate = (walking ? false : document.getElementById("includeHeartRate")?.checked) ?? true;
   const includePower = document.getElementById("includePower")?.checked ?? true;
   const includeCadence = document.getElementById("includeCadence")?.checked ?? true;
   const includeGaitData = document.getElementById("includeGaitData")?.checked ?? true;
@@ -2134,7 +2378,17 @@ async function previewActivity() {
         paceSecondsPerKm, hrRest, hrMax, lapCount,
         weightKg, powerFactor, gpsDrift, avgCadence,
         elevationSource,
-        includeHeartRate, includePower, includeCadence, includeGaitData
+        includeHeartRate, includePower, includeCadence, includeGaitData,
+        sportType: shared.sportType,
+        heightCm: shared.heightCm,
+        sportName: shared.sportName,
+        fitSubSport: shared.fitSubSport,
+        customSubSport: shared.customSubSport,
+        workoutMode: shared.workoutMode,
+        intervalReps: shared.intervalReps,
+        intervalFastKm: shared.intervalFastKm,
+        elapsedExtraSeconds: shared.elapsedExtraSeconds,
+        format: shared.format
       })
     });
     
@@ -2340,6 +2594,7 @@ document.getElementById('serviceStatus')?.addEventListener('click', (e) => {
 
 document.addEventListener('DOMContentLoaded', () => {
   checkServiceStatus();
+  syncDeviceUI();
 });
 
 window.addEventListener('resize', () => {

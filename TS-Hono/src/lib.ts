@@ -1,12 +1,15 @@
 import { FitEncoder, toSemicircles } from './fit';
 import type { RecordData } from './fit';
+import { resolveDevice } from './device';
 
 export const MAX_POINTS = 10000;
 export const ROUTE_CLOSURE_THRESHOLD_METERS = 5;
 export const DEFAULT_WEIGHT_KG = 65;
 export const DEFAULT_POWER_FACTOR = 1.3;
 export const DEFAULT_AVG_CADENCE = 170;
+export const DEFAULT_WALK_CADENCE = 100;
 export const DEFAULT_PACE_SEC_PER_KM = 360;
+export const DEFAULT_WALK_PACE_SEC_PER_KM = 720;
 export const DEFAULT_HR_REST = 60;
 export const DEFAULT_HR_MAX = 180;
 export const WARMUP_DURATION_SEC = 60;
@@ -50,6 +53,15 @@ export interface ProcessedRoute {
   totalAscent: number;
   totalDescent: number;
   avgStrideLength: number;
+  sportType: 'running' | 'walking';
+  sportName: string;
+  subSport: string | number;
+  deviceManufacturer?: number;
+  deviceProduct?: number;
+  elapsedExtraSeconds: number;
+  trainingLoad: number;
+  maxElevation: number;
+  minElevation: number;
 }
 
 export interface RequestBody {
@@ -69,6 +81,17 @@ export interface RequestBody {
   includePower?: boolean;
   includeCadence?: boolean;
   includeGaitData?: boolean;
+  sportType?: 'running' | 'walking';
+  heightCm?: number;
+  sportName?: string;
+  fitSubSport?: string | number;
+  customSubSport?: string | number;
+  deviceType?: string | number;
+  workoutMode?: string;
+  intervalReps?: number;
+  intervalFastKm?: number;
+  elapsedExtraSeconds?: number;
+  format?: string;
 }
 
 export { FitEncoder, toSemicircles };
@@ -114,13 +137,15 @@ function computeCalories(weightKg: number, distanceM: number, paceSecPerKm: numb
   return Math.round(weightKg * distanceKm * metFactor);
 }
 
-function generateCadence(speed: number, targetAvgCadence: number, index: number, totalPoints: number): number {
+function generateCadence(speed: number, targetAvgCadence: number, index: number, totalPoints: number, isWalking = false): number {
   const base = targetAvgCadence;
   const speedEffect = (speed - 2.5) * 6;
   const wave = Math.sin((index / totalPoints) * Math.PI * 4) * 4;
   const noise = (Math.random() - 0.5) * 6;
   const cadence = base + speedEffect + wave + noise;
-  return Math.round(clamp(cadence, 120, 210));
+  const minCadence = isWalking ? 95 : 120;
+  const maxCadence = isWalking ? 170 : 210;
+  return Math.round(clamp(cadence, minCadence, maxCadence));
 }
 
 function generatePower(speed: number, weightKg: number, powerFactor: number, cadence: number): number {
@@ -167,7 +192,11 @@ function computeSamples(
   targetAvgCadence: number,
   weightKg: number,
   powerFactor: number,
-  altitudes: number[] | null = null
+  altitudes: number[] | null = null,
+  workoutMode?: string,
+  intervalReps?: number,
+  intervalFastKm?: number,
+  isWalking = false
 ): ComputeSamplesResult {
   const totalDistanceKm = totalDist / 1000;
   const totalDurationEstimate = totalDistanceKm * paceSecondsPerKm;
@@ -179,6 +208,29 @@ function computeSamples(
   const phase2 = Math.random() * Math.PI * 2;
   const baseAlt = 50 + Math.random() * 30;
 
+  const reps = intervalReps && intervalReps > 0 ? Math.round(intervalReps) : 6;
+  const fastKm = intervalFastKm && intervalFastKm > 0 ? intervalFastKm : 0.8;
+  const workWindow = 0.8;
+  const repKm = totalDistanceKm > 0 ? (totalDistanceKm * workWindow) / reps : 1;
+  const fastFrac = Math.min(1, fastKm / repKm);
+
+  function modeFactorAndHrBoost(frac: number): { factor: number; hrBoost: number } {
+    switch (workoutMode) {
+      case 'negative_split':
+        return { factor: 1 + 0.18 * (frac - 0.5), hrBoost: 0 };
+      case 'lsd':
+        return { factor: 0.9, hrBoost: -0.06 };
+      case 'interval': {
+        if (frac < 0.1 || frac > 0.9) return { factor: 1, hrBoost: -0.05 };
+        const repFrac = ((frac - 0.1) % (workWindow / reps)) / (workWindow / reps);
+        const fast = repFrac < fastFrac;
+        return fast ? { factor: 1.12, hrBoost: 0.16 } : { factor: 0.88, hrBoost: -0.14 };
+      }
+      default:
+        return { factor: 1, hrBoost: 0 };
+    }
+  }
+
   const instSpeedRaw = new Array<number>(n);
   const hrValues = new Array<number>(n);
   const cadenceValues = new Array<number>(n);
@@ -188,6 +240,7 @@ function computeSamples(
   const verticalOscillationValues = new Array<number>(n);
 
   const hasRealAltitude = altitudes != null && altitudes.length === n;
+  const walkingMode = isWalking;
 
   let currentHr = hrRestVal;
   let accumulatedTime = 0;
@@ -198,7 +251,8 @@ function computeSamples(
 
     const longWave = 0.04 * Math.sin(frac * Math.PI * 2 + phase1);
     const shortWave = 0.02 * Math.sin(frac * Math.PI * 6 + phase2);
-    const speedRaw = avgSpeedTarget * baseSpeedFactor * (1 + longWave + shortWave);
+    const { factor: modeFactor, hrBoost } = modeFactorAndHrBoost(frac);
+    const speedRaw = avgSpeedTarget * baseSpeedFactor * (1 + longWave + shortWave) * modeFactor;
     instSpeedRaw[i] = speedRaw;
 
     let intensityTarget: number;
@@ -213,7 +267,7 @@ function computeSamples(
       intensityTarget = 0.82 + 0.15 * f;
     }
 
-    const intensity = Math.min(1, Math.max(0, 0.7 * intensityTarget + 0.3 * Math.min(1, Math.max(0.3, speedRaw / (avgSpeedTarget || 1e-6)))));
+    const intensity = Math.min(1, Math.max(0, 0.7 * intensityTarget + 0.3 * Math.min(1, Math.max(0.3, speedRaw / (avgSpeedTarget || 1e-6))) + hrBoost));
     const hrTarget = hrRestVal + (hrMaxVal - hrRestVal) * intensity;
 
     if (accumulatedTime < WARMUP_DURATION_SEC) {
@@ -231,7 +285,7 @@ function computeSamples(
     const hrFluctuation = breathingWave + strideNoise;
 
     hrValues[i] = Math.round(clamp(currentHr + hrFluctuation, hrRestVal - 5, hrMaxVal + 2));
-    cadenceValues[i] = generateCadence(speedRaw, targetAvgCadence, i, n);
+    cadenceValues[i] = generateCadence(speedRaw, targetAvgCadence, i, n, walkingMode);
     powerValues[i] = generatePower(speedRaw, weightKg, powerFactor, cadenceValues[i]);
     groundTimeValues[i] = generateGroundTime(speedRaw, cadenceValues[i]);
     flightTimeValues[i] = generateFlightTime(speedRaw, cadenceValues[i], groundTimeValues[i]);
@@ -316,6 +370,8 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
   const {
     startTime, points, paceSecondsPerKm, hrRest, hrMax, lapCount, variantIndex,
     weightKg, powerFactor, gpsDrift, avgCadence,
+    sportType, sportName, fitSubSport, customSubSport, deviceType,
+    workoutMode, intervalReps, intervalFastKm, elapsedExtraSeconds,
   } = body || {};
 
   if (!startTime || !points || !Array.isArray(points) || points.length < 2) {
@@ -345,15 +401,40 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
   const power = (Number.isFinite(Number(powerFactor)) && (powerFactor ?? 0) > 0)
     ? Number(powerFactor) : DEFAULT_POWER_FACTOR;
   const drift = Number.isFinite(Number(gpsDrift)) ? Number(gpsDrift) : 0;
-  const targetAvgCadence = Number.isFinite(Number(avgCadence)) ? Number(avgCadence) : DEFAULT_AVG_CADENCE;
+  const resolvedSportType: 'running' | 'walking' = sportType === 'walking' ? 'walking' : 'running';
+  const defaultPace = resolvedSportType === 'walking' ? DEFAULT_WALK_PACE_SEC_PER_KM : DEFAULT_PACE_SEC_PER_KM;
+  const defaultCadence = resolvedSportType === 'walking' ? DEFAULT_WALK_CADENCE : DEFAULT_AVG_CADENCE;
+  const targetAvgCadence = Number.isFinite(Number(avgCadence)) ? Number(avgCadence) : defaultCadence;
   const pace = (Number(paceSecondsPerKm) > 0 && Number(paceSecondsPerKm) < 2000)
-    ? Number(paceSecondsPerKm) : DEFAULT_PACE_SEC_PER_KM;
+    ? Number(paceSecondsPerKm) : defaultPace;
   const hrRestVal = Number.isFinite(Number(hrRest)) ? Number(hrRest) : DEFAULT_HR_REST;
   const hrMaxVal = Number.isFinite(Number(hrMax)) ? Math.max(100, Math.min(220, Number(hrMax))) : DEFAULT_HR_MAX;
   const lapsRaw = Number(lapCount);
   const laps = (Number.isFinite(lapsRaw) && lapsRaw > 0) ? lapsRaw : 1;
   const variantRaw = Number(variantIndex);
   const variant = (Number.isFinite(variantRaw) && variantRaw > 0) ? Math.floor(variantRaw) : 1;
+
+  const resolvedSportName = typeof sportName === 'string' && sportName.trim()
+    ? sportName.trim()
+    : (resolvedSportType === 'walking' ? '健走' : '跑步');
+
+  const customSub = customSubSport !== undefined && customSubSport !== null && String(customSubSport).trim() !== ''
+    ? Number(customSubSport) : undefined;
+  let subSport: string | number = 'generic';
+  if (resolvedSportType === 'walking') {
+    subSport = fitSubSport === 'indoorWalking' ? 'indoorWalking'
+      : fitSubSport === 'casualWalking' ? 'casualWalking' : 'generic';
+  } else if (customSub !== undefined && Number.isFinite(customSub)) {
+    subSport = Math.max(0, Math.min(255, Math.floor(customSub)));
+  } else if (typeof fitSubSport === 'number' && Number.isFinite(fitSubSport)) {
+    subSport = Math.max(0, Math.min(255, Math.floor(fitSubSport)));
+  } else if (typeof fitSubSport === 'string' && fitSubSport.trim()) {
+    subSport = fitSubSport.trim();
+  }
+
+  const device = resolveDevice(deviceType);
+  const elapsedExtra = Number.isFinite(Number(elapsedExtraSeconds)) && Number(elapsedExtraSeconds) >= 0
+    ? Math.floor(Number(elapsedExtraSeconds)) : 0;
 
   const basePoints = buildClosedBasePoints(points);
   const allPoints: RoutePoint[] = [];
@@ -408,14 +489,43 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
 
   const { samples, totalDurationSec } = computeSamples(
     allPoints, distances, totalDist, pace, hrRestVal, hrMaxVal, targetAvgCadence, weight, power,
+    null, workoutMode === 'steady' ? undefined : workoutMode, intervalReps, intervalFastKm,
+    resolvedSportType === 'walking',
   );
 
   const { totalAscent, totalDescent, avgStrideLength } = computeElevationSummary(samples);
+
+  let maxElevation = -Infinity;
+  let minElevation = Infinity;
+  for (const s of samples) {
+    if (s.altitude > maxElevation) maxElevation = s.altitude;
+    if (s.altitude < minElevation) minElevation = s.altitude;
+  }
+  if (!Number.isFinite(maxElevation)) maxElevation = 0;
+  if (!Number.isFinite(minElevation)) minElevation = 0;
+
+  let hrSum = 0;
+  for (const s of samples) hrSum += s.heartRate;
+  const avgHr = samples.length > 0 ? hrSum / samples.length : hrRestVal;
+  const trainingLoad = Math.round(
+    (totalDurationSec / 60) *
+    ((avgHr - hrRestVal) / Math.max(1, (hrMaxVal - hrRestVal))) *
+    100 / 10
+  );
 
   return {
     startDate, totalDist, pace, hrRestVal, hrMaxVal,
     targetAvgCadence, weight, power, calories, laps, variant, samples, totalDurationSec,
     totalAscent, totalDescent, avgStrideLength,
+    sportType: resolvedSportType,
+    sportName: resolvedSportName,
+    subSport,
+    deviceManufacturer: device?.manufacturer,
+    deviceProduct: device?.product,
+    elapsedExtraSeconds: elapsedExtra,
+    trainingLoad,
+    maxElevation,
+    minElevation,
   };
 }
 
@@ -453,13 +563,19 @@ export function generateFitFile(
   altitudes?: number[] | null,
   elevationInfo?: { source: string; status: string } | null
 ): Response {
-  const { startDate, totalDist, totalDurationSec, hrMaxVal, variant, samples, calories } = result;
+  const {
+    startDate, totalDist, totalDurationSec, hrMaxVal, variant, samples, calories,
+    sportType, sportName, subSport, deviceManufacturer, deviceProduct, elapsedExtraSeconds,
+  } = result;
+  const fitSportName = sportType === 'walking' ? 'walking' : 'running';
+  const filenamePrefix = sportType === 'walking' ? 'walk_' : 'run_';
   const includeHeartRate = sensorOptions?.includeHeartRate !== false;
   const includePower = sensorOptions?.includePower !== false;
   const includeCadence = sensorOptions?.includeCadence !== false;
   const includeGaitData = sensorOptions?.includeGaitData !== false;
-  const includeAltitude = sensorOptions?.includeAltitude !== false;
+  const includeAltitude = sensorOptions?.includeAltitude !== false && elevationInfo?.status !== 'none';
   const avgSpeed = totalDurationSec > 0 ? totalDist / totalDurationSec : 0;
+  const sessionElapsed = totalDurationSec + elapsedExtraSeconds;
 
   let totalPower = 0;
   let totalCadence = 0;
@@ -479,16 +595,16 @@ export function generateFitFile(
   }
   const elevationSummary = computeElevationSummary(sessionSamples);
 
-  const sessionEnd = new Date(startDate.getTime() + totalDurationSec * 1000);
+  const sessionEnd = new Date(startDate.getTime() + sessionElapsed * 1000);
 
   const encoder = new FitEncoder({
     type: 'activity',
-    manufacturer: 'development',
-    product: 1,
-    serialNumber: 1,
+    manufacturer: deviceManufacturer ?? 'development',
+    product: deviceProduct ?? 1,
+    serialNumber: deviceManufacturer !== undefined ? (0x10000000 + Math.floor(Math.random() * 0x7fffffff)) : 1,
     timeCreated: startDate,
-    sport: 'running',
-    subSport: 'generic',
+    sport: fitSportName,
+    subSport,
   });
 
   encoder.writeFileIdMessage();
@@ -522,12 +638,12 @@ export function generateFitFile(
   encoder.writeLapMessage({
     timestamp: sessionEnd,
     startTime: startDate,
-    totalElapsedTime: totalDurationSec,
+    totalElapsedTime: sessionElapsed,
     totalTimerTime: totalDurationSec,
     totalDistance: totalDist,
     totalCalories: calories,
-    sport: 'running',
-    subSport: 'generic',
+    sport: fitSportName,
+    subSport,
     avgSpeed,
     avgHeartRate: includeHeartRate ? avgHr : 0,
     maxHeartRate: includeHeartRate ? hrMaxVal : 0,
@@ -538,12 +654,12 @@ export function generateFitFile(
   encoder.writeSessionMessage({
     timestamp: sessionEnd,
     startTime: startDate,
-    totalElapsedTime: totalDurationSec,
+    totalElapsedTime: sessionElapsed,
     totalTimerTime: totalDurationSec,
     totalDistance: totalDist,
     totalCalories: calories,
-    sport: 'running',
-    subSport: 'generic',
+    sport: fitSportName,
+    subSport,
     avgSpeed,
     avgHeartRate: includeHeartRate ? avgHr : 0,
     maxHeartRate: includeHeartRate ? hrMaxVal : 0,
@@ -565,7 +681,7 @@ export function generateFitFile(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/vnd.ant.fit',
-    'Content-Disposition': `attachment; filename=run_${variant}.fit`,
+    'Content-Disposition': `attachment; filename=${filenamePrefix}${variant}.fit`,
   };
   if (elevationInfo) {
     headers['X-Elevation-Source'] = elevationInfo.source;
