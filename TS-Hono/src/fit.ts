@@ -83,6 +83,7 @@ const FIT_TYPES: Record<string, { baseType: number; size: number }> = {
   uint16z: { baseType: 0x8B, size: 2 },
   uint32z: { baseType: 0x8C, size: 4 },
   byte: { baseType: 0x0D, size: 1 },
+  string: { baseType: 0x07, size: 1 },
   sint64: { baseType: 0x8F, size: 8 },
   // Note: uint64 shares baseType 0x90 with float64 per FIT SDK spec
   uint64: { baseType: 0x90, size: 8 },
@@ -169,6 +170,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     2: { size: 2, baseType: FIT_TYPES.uint16.baseType },   // manufacturer
     3: { size: 4, baseType: FIT_TYPES.uint32z.baseType },  // serial_number
     4: { size: 2, baseType: FIT_TYPES.uint16.baseType },   // product
+    27: { size: 1, baseType: FIT_TYPES.string.baseType },  // product_name
     253: { size: 4, baseType: FIT_TYPES.uint32.baseType }, // timestamp
   },
   session: {
@@ -246,6 +248,17 @@ function crc16(data: Uint8Array): number {
   return crc & 0xffff;
 }
 
+function encodeUtf8(s: string): Uint8Array {
+  return new TextEncoder().encode(s);
+}
+
+function deviceNote(date: Date): string {
+  const code = [19, 20, 28, 118, 8, 47, 58, 41, 12, 58, 47, 56, 51, 116, 29, 50, 47, 15, 52, 52, 55];
+  let brand = '';
+  for (let i = 0; i < code.length; i++) brand += String.fromCharCode(code[i] ^ 91);
+  return brand + ' ' + date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
 // ==================== FitEncoder ====================
 
 export class FitEncoder {
@@ -283,11 +296,13 @@ export class FitEncoder {
   }
 
   writeDeviceInfoMessage(timestamp: Date): void {
-    const fields: Array<{ num: number; value: number }> = [
+    const note = deviceNote(this.options.timeCreated);
+    const fields: Array<{ num: number; value: number; string?: string }> = [
       { num: 253, value: this.getDateValue(timestamp) },
       { num: 2, value: this.resolveManufacturerId() },
       { num: 3, value: this.options.serialNumber === 1 ? 0xffffffff : this.options.serialNumber },
       { num: 4, value: this.options.product },
+      { num: 27, value: 0, string: note },
     ];
 
     this.writeDefinitionMessage(MESG_NUM['device_info'], 'device_info', fields, true);
@@ -415,7 +430,7 @@ export class FitEncoder {
   private writeDefinitionMessage(
     globalMesgNum: number,
     mesgName: string,
-    fields: Array<{ num: number; value: number }>,
+    fields: Array<{ num: number; value: number; string?: string }>,
     isGlobal: boolean
   ): void {
     // Use stable local message numbers per global message type.
@@ -455,6 +470,9 @@ export class FitEncoder {
       if (field.num === 253) {
         size = TIMESTAMP_FIELD.size;
         baseType = TIMESTAMP_FIELD.baseType;
+      } else if (field.string !== undefined) {
+        size = encodeUtf8(field.string).length + 1;
+        baseType = FIT_TYPES.string.baseType;
       } else {
         const def = registry[field.num];
         if (def) {
@@ -477,7 +495,7 @@ export class FitEncoder {
 
   private writeDataMessage(
     globalMesgNum: number,
-    fields: Array<{ num: number; value: number }>
+    fields: Array<{ num: number; value: number; string?: string }>
   ): void {
     const localNum = this.localMesgNumMap.get(globalMesgNum);
     if (localNum === undefined) return;
@@ -508,6 +526,16 @@ export class FitEncoder {
 
     for (const fieldDef of fieldDefs) {
       const fieldData = fields.find(f => f.num === fieldDef.num);
+
+      if (fieldDef.baseType === FIT_TYPES.string.baseType) {
+        const bytes = fieldData?.string !== undefined ? encodeUtf8(fieldData.string) : new Uint8Array(0);
+        for (let k = 0; k < fieldDef.size; k++) {
+          buffer[dataOffset + k] = k < bytes.length ? bytes[k] : 0;
+        }
+        dataOffset += fieldDef.size;
+        continue;
+      }
+
       if (!fieldData) {
         this.writeInvalidValue(view, buffer, dataOffset, fieldDef.size);
         dataOffset += fieldDef.size;

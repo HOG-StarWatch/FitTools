@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh_CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIT 文件查看器 &ndash; 浏览、导出与修复运动 FIT 文件</title>
+  <meta name="description" content="在浏览器中查看、分析、导出与修复运动 FIT 文件——支持数据表格、交互图表与地图，全程本地处理，不上传任何文件。" />
+  <link rel="icon" href="../HOG_S_64.png" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="../theme.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand" id="brand" title="打开菜单">
+      <img class="logo" src="../HOG_S_64.png" alt="FIT 文件查看器" />
+      <div class="brand-text">
+        <h1>FIT 文件查看器</h1>
+        <p>浏览、导出与修复运动 FIT 文件</p>
+      </div>
+    </div>
+
+    <div class="theme-selector" id="theme-selector" title="主题">
+      <button class="theme-selector-btn active" data-theme="dark" title="深色主题" aria-label="深色主题"></button>
+      <button class="theme-selector-btn" data-theme="light" title="浅色主题" aria-label="浅色主题"></button>
+      <button class="theme-selector-btn" data-theme="glass" title="毛玻璃主题" aria-label="毛玻璃主题"></button>
+    </div>
+
+    <div class="topbar-actions" id="topbar-actions" hidden>
+      <div class="btn-group">
+        <button class="btn" id="btn-open">打开文件</button>
+        <button class="btn" id="btn-export-csv">导出 CSV</button>
+        <button class="btn" id="btn-export-gpx">导出 GPX</button>
+        <button class="btn" id="btn-export-tcx">导出 TCX</button>
+        <button class="btn" id="btn-export-json">导出 JSON</button>
+      </div>
+      <button class="btn btn-primary" id="btn-repair">修复文件</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- 首页 / 拖放区 -->
+    <section class="landing" id="landing">
+      <div class="dropzone" id="dropzone" tabindex="0">
+        <svg class="dz-icon" viewBox="0 0 48 48" aria-hidden="true">
+          <rect x="6" y="10" width="36" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.5" />
+          <path d="M16 38l14-16 6 8 4-5" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="33" cy="19" r="3" fill="currentColor" />
+        </svg>
+        <h2>将 <code>.fit</code> 文件拖放到这里</h2>
+        <p>或 <span class="link" id="browse-link">点击选择文件</span> &ndash; 所有处理均在浏览器本地完成，不会上传任何数据</p>
+        <input type="file" id="file-input" accept=".fit,application/octet-stream" hidden />
+        <p class="dz-hint">支持表格查看、交互图表与地图展示 &ndash; 可导出 CSV / GPX / TCX / JSON &ndash; 还可修复损坏的文件。</p>
+      </div>
+      <div class="landing-foot">
+        <div class="feature"><b>表格</b> 每种消息类型均可排序、可导出为 CSV</div>
+        <div class="feature"><b>图表</b> 心率、功率、踏频、速度、海拔 &ndash; 支持悬停与缩放</div>
+        <div class="feature"><b>地图</b> GPS 轨迹与圈速标记，可导出为 GPX</div>
+        <div class="feature"><b>修复</b> 从损坏文件中恢复数据，下载修复后的副本</div>
+      </div>
+    </section>
+
+    <!-- 工作区 -->
+    <section class="workbench" id="workbench" hidden>
+      <div class="filebar">
+        <div class="file-info">
+          <svg viewBox="0 0 24 24" class="file-icon" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14 3v6h6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <div>
+            <div class="file-name" id="file-name"></div>
+            <div class="file-meta" id="file-meta"></div>
+          </div>
+        </div>
+        <div class="file-status" id="file-status"></div>
+      </div>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="overview">概览</button>
+        <button class="tab" data-tab="tables">表格</button>
+        <button class="tab" data-tab="charts">图表</button>
+        <button class="tab" data-tab="map">地图</button>
+      </nav>
+
+      <div class="tab-body" id="tab-overview">
+        <div class="cards" id="summary-cards"></div>
+        <div class="panel" id="panel-header"></div>
+        <div class="panel" id="panel-device"></div>
+        <div class="panel" id="panel-laps"></div>
+        <div class="panel" id="panel-sessions"></div>
+        <div class="panel" id="panel-errors"></div>
+      </div>
+
+      <div class="tab-body" id="tab-tables" hidden>
+        <div class="tables-toolbar">
+          <button class="btn" id="btn-expand-all">全部展开</button>
+          <button class="btn" id="btn-collapse-all">全部折叠</button>
+          <button class="btn" id="btn-export-all-csv">全部导出为 CSV</button>
+          <span class="tables-count" id="tables-count"></span>
+        </div>
+        <div id="message-tables"></div>
+      </div>
+
+      <div class="tab-body" id="tab-charts" hidden>
+        <div class="charts-toolbar">
+          <label>指标 <select id="chart-metric"></select></label>
+          <button class="btn" id="btn-chart-reset">重置缩放</button>
+          <span class="chart-hint">悬停查看数值 &middot; 拖动框选缩放时间范围 &middot; 按住 Shift 拖动平移</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-canvas"></canvas></div>
+      </div>
+
+      <div class="tab-body" id="tab-map" hidden>
+        <div class="map-toolbar">
+          <label>地图源 <select id="map-source">
+            <option value="osm">OpenStreetMap</option>
+            <option value="gaode">高德地图</option>
+            <option value="tencent">腾讯地图</option>
+            <option value="carto-dark">Carto 暗色</option>
+          </select></label>
+          <button class="btn" id="btn-gpx-download">下载轨迹为 GPX</button>
+          <span class="map-hint" id="map-hint"></span>
+        </div>
+        <div class="map-wrap" id="map"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>纯浏览器端 FIT 查看器。基于 <a href="https://github.com/garmin/fit-javascript-sdk" target="_blank" rel="noopener">@garmin/fitsdk</a>、<a href="https://www.chartjs.org/" target="_blank" rel="noopener">Chart.js</a> 与 <a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a>。你的文件永远不会离开本设备。</p>
+  </footer>
+
+  <input type="file" id="file-input-silent" accept=".fit" hidden />
+
+  <!-- 支持弹窗 -->
+  <div class="overlay" id="support-overlay" hidden>
+    <div class="support-modal" role="dialog" aria-modal="true" aria-label="支持与开源">
+      <div class="support-header">
+        <h3>支持与开源</h3>
+        <button class="support-close" id="support-close" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <div class="support-body">
+        <p class="support-tip">如果您觉得这个项目对您有帮助，欢迎赞赏支持，或前往开源仓库提出建议与问题。</p>
+        <div class="support-img-wrap">
+          <img src="../sponsor.png" alt="赞赏码" class="support-img" />
+        </div>
+        <div class="support-actions">
+          <a href="https://github.com/HOG-StarWatch/FitTool" target="_blank" rel="noopener noreferrer" class="btn btn-primary support-open">
+            前往开源地址
+          </a>
+          <a href="../" class="btn support-home" title="返回主项目 FIT 工具">返回主项目</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/sdk/fitsdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/exporters.js"></script>
+  <script src="js/repair.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

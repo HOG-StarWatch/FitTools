@@ -1,0 +1,16 @@
+{
+  "name": "fitfileviewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-only FIT file viewer: tables, charts, maps, exports, and repair - a fitfileviewer.com replica.",
+  "scripts": {
+    "bundle:sdk": "node scripts/bundle-sdk.mjs",
+    "make:sample": "node scripts/make-sample.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "@garmin/fitsdk": "21.212.0",
+    "esbuild": "^0.25.0"
+  }
+}

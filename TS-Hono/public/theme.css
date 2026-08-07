@@ -1,0 +1,88 @@
+:root {
+  --bg: #0d1117;
+  --text: #c9d1d9;
+  --text-dim: #8b949e;
+  --border: #30363d;
+  --hover: #161b22;
+  --link: #58a6ff;
+  --panel: #161b22;
+  --act-bg: #21262d;
+  --inp-bg: #0d1117;
+  --inp-bd: #30363d;
+  --highlight: #1f6feb;
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --card-solid: #161b22;
+  --btn-bg: #21262d;
+  --btn-tx: #c9d1d9;
+  --btn-hover: #30363d;
+  --accent: #d946ef;
+  --accent-hover: #c026d3;
+  --success: #2ea44f;
+  --success-bg: rgba(46, 164, 79, 0.15);
+  --warning: #d29922;
+  --error: #f85149;
+  --error-bg: rgba(248, 81, 73, 0.15);
+  --glass-blur: 20px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --transition: 0.2s;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --text: #24292f;
+  --text-dim: #57606a;
+  --border: #d0d7de;
+  --hover: #f6f8fa;
+  --link: #0969da;
+  --panel: #f6f8fa;
+  --act-bg: #eaeef2;
+  --inp-bg: #ffffff;
+  --inp-bd: #d0d7de;
+  --highlight: #0969da;
+  --card-bg: rgba(0, 0, 0, 0.02);
+  --card-solid: #f6f8fa;
+  --btn-bg: #f6f8fa;
+  --btn-tx: #24292f;
+  --btn-hover: #eaeef2;
+  --accent: #d946ef;
+  --accent-hover: #c026d3;
+  --success: #2ea44f;
+  --success-bg: rgba(46, 164, 79, 0.1);
+  --error: #cf222e;
+  --error-bg: rgba(207, 34, 46, 0.1);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="glass"] {
+  --bg: #1a1025;
+  --text: #e0d4f0;
+  --text-dim: #9a8ab0;
+  --border: #3a2a50;
+  --hover: #251a35;
+  --link: #c084fc;
+  --panel: rgba(30, 18, 48, 0.75);
+  --act-bg: rgba(45, 32, 64, 0.55);
+  --inp-bg: rgba(26, 16, 37, 0.55);
+  --inp-bd: #3a2a50;
+  --highlight: #a855f7;
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-solid: rgba(35, 22, 55, 0.7);
+  --btn-bg: rgba(45, 32, 64, 0.5);
+  --btn-tx: #e0d4f0;
+  --btn-hover: rgba(58, 42, 80, 0.6);
+  --accent: #d946ef;
+  --accent-hover: #e879f9;
+  --success: #86efac;
+  --success-bg: rgba(134, 239, 172, 0.12);
+  --error: #fca5a5;
+  --error-bg: rgba(252, 165, 165, 0.12);
+  --shadow-sm: 0 1px 4px rgba(168, 85, 247, 0.15);
+  --shadow-md: 0 4px 16px rgba(168, 85, 247, 0.2);
+  --shadow-lg: 0 8px 32px rgba(168, 85, 247, 0.25);
+}

@@ -25,6 +25,7 @@ FitTool 是一款基于 Web 的校园跑路线生成工具，支持在地图上�
 ## 功能特性
 
 - **多地图源支持**：高德地图、腾讯地图、百度地图、OSM、ArcGIS、天地图等
+- **FIT 文件查看器**：内置 `/viewer/` 子页面，本地解码 FIT（官方 SDK）、概览/表格/图表/地图、导出 CSV/GPX/TCX/JSON、修复损坏文件
 - **自由绘制模式**：在地图上点击添加轨迹点
 - **形状生成模式**：一键生成 400m / 300m / 200m 标准跑道，支持旋转和位置偏移
 - **轨迹编辑**：支持拖拽编辑、撤销，回退，平滑处理
@@ -136,6 +137,22 @@ TS-Hono 支持两种 Cloudflare 部署：**Workers** 和 **Pages**。
 | ------- | ---- | ------- | ---- |
 | Workers | `npm run deploy:workers` | `wrangler.workers.toml` | 必须 Wrangler CLI 部署 |
 | Pages   | `npm run deploy:pages` | `wrangler.toml` | 支持 Dashboard 可视化部署 |
+
+### FIT 查看器（`/viewer/`）
+
+内置独立的浏览器端 FIT 文件查看器（源自 FitFileViewer，位于 `public/viewer/`），可从主页顶栏「FIT 查看器」入口打开：
+
+- **打开**：拖放或点击加载 `.fit` 文件，纯浏览器本地解码（基于官方 `@garmin/fitsdk`），不上传任何数据
+- **概览**：摘要卡片、文件头、设备信息、圈数、会话、解码错误列表
+- **表格**：每种消息类型可排序、可折叠，支持导出 CSV（单表或全部）
+- **图表**：心率/功率/踏频/速度/海拔等指标，支持悬停、框选缩放、Shift 拖拽平移
+- **地图**：GPS 轨迹 + 圈速标记 + 起终点（Leaflet，大文件自动降采样）
+- **导出**：CSV / GPX / TCX / JSON
+- **修复**：从部分损坏的 FIT 文件中恢复消息并重新编码，下载可上传的修复副本
+
+开发说明：`public/viewer/` 自带 `package.json` 与 `scripts/`（`bundle:sdk` 重新打包官方 SDK、`make:sample` 生成演示文件、`serve` 独立静态服务），修改后需在 `public/viewer/` 下 `npm install`。该目录为纯静态资源，Express / Workers / Pages 三种部署均自动托管，无需额外配置。
+
+> 注意：Cloudflare Pages 部署下，非 `/api/*` 的请求由 `functions/api/[[catchall]].ts` 直接透传到静态资源（`context.next()`），`/viewer/` 与根路径因此正常返回页面。
 
 ---
 
@@ -260,7 +277,7 @@ const WINDOW_SECONDS = 3600;   // 窗口时长（秒）
 
 ### Q: 部署后访问根路径 404
 
-检查构建产物是否正确生成，确认 `dist/index.html` 存在。
+检查 `functions/api/[[catchall]].ts`：非 `/api/` 请求必须走 `context.next()` 透传到静态资源（`public/` 内容），构建产物确认 `dist-pages/index.html` 与 `dist-pages/functions/api/[[catchall]].js` 均存在。
 
 ### Q: API 返回 405 Method Not Allowed
 

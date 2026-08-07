@@ -66,6 +66,11 @@ const handleRequest = (context: {
   return app.fetch(context.request, context.env, context);
 };
 
+const isApiPath = (request: Request): boolean => {
+  const path = new URL(request.url).pathname;
+  return path.startsWith('/api/') || path === '/api';
+};
+
 export const onRequestPost = async (context: {
   request: Request;
   params: Record<string, string | string[]>;
@@ -73,7 +78,9 @@ export const onRequestPost = async (context: {
   waitUntil: (promise: Promise<unknown>) => void;
   passThroughOnException: () => void;
   props: unknown;
+  next: () => Promise<Response>;
 }) => {
+  if (!isApiPath(context.request)) return context.next();
   return handleRequest(context);
 };
 
@@ -84,6 +91,8 @@ export const onRequestGet = async (context: {
   waitUntil: (promise: Promise<unknown>) => void;
   passThroughOnException: () => void;
   props: unknown;
+  next: () => Promise<Response>;
 }) => {
+  if (!isApiPath(context.request)) return context.next();
   return handleRequest(context);
 };

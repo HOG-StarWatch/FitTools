@@ -4,12 +4,9 @@
 
 function toggleCard(header) {
   const card = header.closest('.card');
-  const willOpen = card.classList.contains('collapsed');
-
-  card.closest('.sidebar')?.querySelectorAll('.card').forEach(c => {
-    if (c !== card) c.classList.add('collapsed');
-  });
-  card.classList.toggle('collapsed', !willOpen);
+  const pinned = !card.classList.contains('pinned');
+  card.classList.toggle('pinned', pinned);
+  card.classList.toggle('collapsed', !pinned);
 }
 
 // ==================== 三主题系统模块 ====================
@@ -40,7 +37,147 @@ function applyTheme(theme) {
 
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
+  initParamsAccordion();
+  loadAnnouncements();
 });
+
+function initParamsAccordion() {
+  const toggle = document.getElementById('paramsAccordionToggle');
+  const body = document.getElementById('paramsAccordionBody');
+  if (!toggle || !body) return;
+  toggle.addEventListener('click', () => {
+    const open = toggle.classList.toggle('open');
+    body.classList.toggle('collapsed', !open);
+  });
+}
+
+// ==================== 公告栏模块 ====================
+
+const ANNOUNCE_URL = 'https://gist.githubusercontent.com/HOG-StarWatch/315e7eebc6a25b14d6a982d075906907/raw/FitAnnouncement.txt';
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function inlineMd(raw) {
+  return escapeHtml(raw)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
+function renderSimpleMarkdown(text) {
+  const lines = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n');
+  let html = '';
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      const n = heading[1].length;
+      html += `<h${n}>${inlineMd(heading[2])}</h${n}>`;
+      i++;
+      continue;
+    }
+
+    if (/^-{3,}$/.test(line.trim())) { html += '<hr>'; i++; continue; }
+
+    if (/^>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(inlineMd(lines[i].replace(/^>\s?/, ''))); i++; }
+      html += '<blockquote>' + buf.join('<br>') + '</blockquote>';
+      continue;
+    }
+
+    const ul = line.match(/^[-*]\s+(.*)$/);
+    if (ul) {
+      const buf = [];
+      while (i < lines.length) {
+        const m = lines[i].match(/^[-*]\s+(.*)$/);
+        if (!m) break;
+        buf.push('<li>' + inlineMd(m[1]) + '</li>');
+        i++;
+      }
+      html += '<ul>' + buf.join('') + '</ul>';
+      continue;
+    }
+
+    const ol = line.match(/^\d+\.\s+(.*)$/);
+    if (ol) {
+      const buf = [];
+      while (i < lines.length) {
+        const m = lines[i].match(/^\d+\.\s+(.*)$/);
+        if (!m) break;
+        buf.push('<li>' + inlineMd(m[1]) + '</li>');
+        i++;
+      }
+      html += '<ol>' + buf.join('') + '</ol>';
+      continue;
+    }
+
+    const paragraph = [line.trim()];
+    i++;
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6})\s|^[-*]\s|^\d+\.\s|^>\s|-{3,}$/.test(lines[i].trim())) {
+      paragraph.push(lines[i].trim());
+      i++;
+    }
+    html += '<p>' + inlineMd(paragraph.join(' ')) + '</p>';
+  }
+
+  return html;
+}
+
+async function loadAnnouncements() {
+  const el = document.getElementById('announceContent');
+  if (!el) return;
+  el.innerHTML = '加载中…';
+
+  let text = '';
+  const sources = [];
+  if (ANNOUNCE_URL) sources.push(ANNOUNCE_URL);
+  sources.push('./FitAnnouncement.txt');
+
+  for (const url of sources) {
+    try {
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (!res.ok) continue;
+      const raw = await res.text();
+      if (raw.trim()) { text = raw; break; }
+    } catch (e) { }
+  }
+
+  el.innerHTML = text ? renderSimpleMarkdown(text) : '<p style="text-align:center;color:var(--text-dim)">暂无公告</p>';
+}
+
+function openNoticeWindow() {
+  const w = document.getElementById('noticeWindow');
+  if (w) w.classList.add('open');
+}
+
+function closeNoticeWindow() {
+  const w = document.getElementById('noticeWindow');
+  if (w) w.classList.remove('open');
+}
+
+function toggleNoticeWindow(e) {
+  if (e) e.stopPropagation();
+  const w = document.getElementById('noticeWindow');
+  if (!w) return;
+  w.classList.toggle('open');
+}
+
+function stopProp(e) { e.stopPropagation(); }
+
+document.getElementById('noticeFab')?.addEventListener('click', toggleNoticeWindow);
+['wheel','dblclick','mousedown','touchstart'].forEach(ev => {
+  document.getElementById('noticeFab')?.addEventListener(ev, stopProp);
+  document.getElementById('noticeWindow')?.addEventListener(ev, stopProp);
+});
+document.getElementById('noticeWindow')?.addEventListener('click', stopProp);
 
 let searchMarker = null;
 
@@ -1330,10 +1467,6 @@ let smoothPolyline = null;
 let paceChart = null;
 let hrChart = null;
 let altChart = null;
-let previewData = null;
-let previewTimer = null;
-let previewMarker = null;
-let previewIndex = 0;
 
 function updateMessage(text, isError = false) {
   const el = document.getElementById("message");
@@ -1814,15 +1947,25 @@ function resolveDeviceTypeFromUI() {
   return brand || undefined;
 }
 
+function renderManufacturerTable(kw) {
+  const tbody = document.getElementById('manufacturerTableBody');
+  if (!tbody) return;
+  const q = String(kw || '').trim().toLowerCase();
+  tbody.innerHTML = OFFICIAL_MANUFACTURERS
+    .filter(([id, name]) => !q || String(id).includes(q) || name.toLowerCase().includes(q))
+    .map(([id, name]) => `<div class="mfg-cell" data-id="${id}" title="点击填入自定义"><span class="mfg-id">${id}</span><span class="mfg-name">${name}</span></div>`)
+    .join('');
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
 function openManufacturerModal() {
   const modal = document.getElementById('manufacturerModal');
   if (!modal) return;
-  const tbody = document.getElementById('manufacturerTableBody');
-  if (tbody && tbody.children.length === 0) {
-    tbody.innerHTML = OFFICIAL_MANUFACTURERS
-      .map(([id, name]) => `<div class="mfg-cell" data-id="${id}" title="点击填入自定义数值"><span class="mfg-id">${id}</span><span class="mfg-name">${name}</span></div>`)
-      .join('');
-  }
+  renderManufacturerTable(document.getElementById('manufacturerSearch')?.value || '');
   modal.classList.add('active');
 }
 
@@ -1848,6 +1991,7 @@ function closeManufacturerModal() {
 
 document.getElementById('manufacturerTableBtn')?.addEventListener('click', openManufacturerModal);
 document.getElementById('manufacturerModalClose')?.addEventListener('click', closeManufacturerModal);
+document.getElementById('manufacturerSearch')?.addEventListener('input', debounce((e) => renderManufacturerTable(e.target.value), 300));
 document.getElementById('deviceBrandSelect')?.addEventListener('change', syncDeviceUI);
 document.getElementById('manufacturerModal')?.addEventListener('click', (e) => {
   if (e.target.id === 'manufacturerModal') closeManufacturerModal();
@@ -2405,24 +2549,6 @@ async function previewActivity() {
     const km = (data.totalDistanceMeters / 1000).toFixed(2);
     const min = (data.totalDurationSec / 60).toFixed(1);
     updateMessage(`预览已生成，距离约 ${km} 公里，时间约 ${min} 分钟`);
-    
-    previewData = data;
-    previewIndex = 0;
-
-    if (previewTimer) {
-      clearInterval(previewTimer);
-      previewTimer = null;
-    }
-    if (previewMarker) {
-      map.removeLayer(previewMarker);
-      previewMarker = null;
-    }
-    
-    const samples = previewData.samples || [];
-    if (samples.length > 0) {
-      previewMarker = L.circleMarker([samples[0].lat, samples[0].lng], { radius: 6, color: "#1976d2" }).addTo(map);
-      startPreviewPlayback();
-    }
   } catch (e) {
     console.error(e);
     updateMessage("预览请求失败", true);
@@ -2601,41 +2727,3 @@ window.addEventListener('resize', () => {
   const el = document.getElementById("distanceInfo");
   if (el) fitText(el);
 });
-
-// ==================== 预览回放功能模块 ====================
-
-function updateLiveInfo(sample) {
-  const el = document.getElementById("liveInfo");
-  if (!el || !sample) return;
-  
-  const t = Math.max(0, sample.timeSec || 0);
-  const min = Math.floor(t / 60);
-  const sec = Math.floor(t % 60);
-  const speed = sample.speed > 0 ? sample.speed : 0.01;
-  const secPerKm = 1000 / speed;
-  const paceMin = Math.floor(secPerKm / 60);
-  const paceSec = Math.round(secPerKm % 60);
-  const hr = sample.heartRate || 0;
-  
-  el.textContent = `时间 ${min}:${sec.toString().padStart(2, "0")}  配速 ${paceMin}'${paceSec.toString().padStart(2, "0")}" / km  心率 ${hr} bpm`;
-}
-
-function startPreviewPlayback() {
-  const samples = previewData?.samples || [];
-  if (!samples.length) return;
-  
-  previewTimer = setInterval(() => {
-    if (previewIndex >= samples.length) {
-      clearInterval(previewTimer);
-      previewTimer = null;
-      return;
-    }
-    
-    const s = samples[previewIndex];
-    if (previewMarker && s) {
-      previewMarker.setLatLng([s.lat, s.lng]);
-      updateLiveInfo(s);
-    }
-    previewIndex += 1;
-  }, 100);
-}

@@ -1,0 +1,31500 @@
+var FitSDK = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __typeError = (msg) => {
+    throw TypeError(msg);
+  };
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot " + msg);
+  var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
+  var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
+  var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value) : member.set(obj, value), value);
+  var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
+  var __privateWrapper = (obj, member, setter, getter) => ({
+    set _(value) {
+      __privateSet(obj, member, value, setter);
+    },
+    get _() {
+      return __privateGet(obj, member, getter);
+    }
+  });
+
+  // node_modules/@garmin/fitsdk/src/index.js
+  var index_exports = {};
+  __export(index_exports, {
+    CrcCalculator: () => crc_calculator_default,
+    Decoder: () => decoder_default,
+    Encoder: () => encoder_default,
+    Profile: () => profile_default,
+    Stream: () => stream_default,
+    Utils: () => utils_default
+  });
+
+  // node_modules/@garmin/fitsdk/src/crc-calculator.js
+  var crcTable = [
+    0,
+    52225,
+    55297,
+    5120,
+    61441,
+    15360,
+    10240,
+    58369,
+    40961,
+    27648,
+    30720,
+    46081,
+    20480,
+    39937,
+    34817,
+    17408
+  ];
+  var _crc, _CrcCalculator_instances, updateCRC_fn;
+  var _CrcCalculator = class _CrcCalculator {
+    constructor() {
+      __privateAdd(this, _CrcCalculator_instances);
+      __privateAdd(this, _crc, 0);
+    }
+    get crc() {
+      return __privateGet(this, _crc);
+    }
+    addBytes(buf, start, end) {
+      for (let i = start; i < end; i++) {
+        __privateSet(this, _crc, __privateMethod(this, _CrcCalculator_instances, updateCRC_fn).call(this, buf[i]));
+      }
+      return __privateGet(this, _crc);
+    }
+    static calculateCRC(buf, start, end) {
+      const crcCalculator = new _CrcCalculator();
+      return crcCalculator.addBytes(buf, start, end);
+    }
+  };
+  _crc = new WeakMap();
+  _CrcCalculator_instances = new WeakSet();
+  updateCRC_fn = function(value) {
+    let tmp = crcTable[__privateGet(this, _crc) & 15];
+    __privateSet(this, _crc, __privateGet(this, _crc) >> 4 & 4095);
+    __privateSet(this, _crc, __privateGet(this, _crc) ^ tmp ^ crcTable[value & 15]);
+    tmp = crcTable[__privateGet(this, _crc) & 15];
+    __privateSet(this, _crc, __privateGet(this, _crc) >> 4 & 4095);
+    __privateSet(this, _crc, __privateGet(this, _crc) ^ tmp ^ crcTable[value >> 4 & 15]);
+    return __privateGet(this, _crc);
+  };
+  var CrcCalculator = _CrcCalculator;
+  var crc_calculator_default = CrcCalculator;
+
+  // node_modules/@garmin/fitsdk/src/accumulator.js
+  var _accumulatedValue, _lastValue;
+  var AccumulatedField = class {
+    constructor(value) {
+      __privateAdd(this, _accumulatedValue, 0);
+      __privateAdd(this, _lastValue, 0);
+      __privateSet(this, _accumulatedValue, value);
+      __privateSet(this, _lastValue, value);
+    }
+    accumulate(value, bits) {
+      const mask = (1 << bits) - 1;
+      __privateSet(this, _accumulatedValue, __privateGet(this, _accumulatedValue) + (value - __privateGet(this, _lastValue) & mask));
+      __privateSet(this, _lastValue, value);
+      return __privateGet(this, _accumulatedValue);
+    }
+  };
+  _accumulatedValue = new WeakMap();
+  _lastValue = new WeakMap();
+  var _messages;
+  var Accumulator = class {
+    constructor() {
+      __privateAdd(this, _messages, {});
+    }
+    createAccumulatedField(mesgNum, fieldNum, value) {
+      const accumualtedField = new AccumulatedField(value);
+      if (__privateGet(this, _messages)[mesgNum] == null) {
+        __privateGet(this, _messages)[mesgNum] = {};
+      }
+      __privateGet(this, _messages)[mesgNum][fieldNum] = accumualtedField;
+      return accumualtedField;
+    }
+    accumulate(mesgNum, fieldNum, value, bits) {
+      let accumualtedField = __privateGet(this, _messages)[mesgNum]?.[fieldNum];
+      if (accumualtedField == null) {
+        accumualtedField = this.createAccumulatedField(mesgNum, fieldNum, value);
+      }
+      return accumualtedField.accumulate(value, bits);
+    }
+  };
+  _messages = new WeakMap();
+  var accumulator_default = Accumulator;
+
+  // node_modules/@garmin/fitsdk/src/fit.js
+  var BaseType = {
+    ENUM: 0,
+    SINT8: 1,
+    UINT8: 2,
+    SINT16: 3,
+    UINT16: 4,
+    SINT32: 5,
+    UINT32: 6,
+    STRING: 7,
+    FLOAT32: 8,
+    FLOAT64: 9,
+    UINT8Z: 10,
+    UINT16Z: 11,
+    UINT32Z: 12,
+    BYTE: 13,
+    SINT64: 14,
+    UINT64: 15,
+    UINT64Z: 16
+  };
+  var BaseTypeMask = 31;
+  var BaseTypeDefinitions = {
+    0: { size: 1, type: BaseType.ENUM, baseTypeEndianFlag: 0, invalid: 255 },
+    1: { size: 1, type: BaseType.SINT8, baseTypeEndianFlag: 0, invalid: 127 },
+    2: { size: 1, type: BaseType.UINT8, baseTypeEndianFlag: 0, invalid: 255 },
+    3: { size: 2, type: BaseType.SINT16, baseTypeEndianFlag: 128, invalid: 32767 },
+    4: { size: 2, type: BaseType.UINT16, baseTypeEndianFlag: 128, invalid: 65535 },
+    5: { size: 4, type: BaseType.SINT32, baseTypeEndianFlag: 128, invalid: 2147483647 },
+    6: { size: 4, type: BaseType.UINT32, baseTypeEndianFlag: 128, invalid: 4294967295 },
+    7: { size: 1, type: BaseType.STRING, baseTypeEndianFlag: 0, invalid: 0 },
+    8: { size: 4, type: BaseType.FLOAT32, baseTypeEndianFlag: 128, invalid: 4294967295 },
+    9: { size: 8, type: BaseType.FLOAT64, baseTypeEndianFlag: 128, invalid: 18446744073709552e3 },
+    10: { size: 1, type: BaseType.UINT8Z, baseTypeEndianFlag: 0, invalid: 0 },
+    11: { size: 2, type: BaseType.UINT16Z, baseTypeEndianFlag: 128, invalid: 0 },
+    12: { size: 4, type: BaseType.UINT32Z, baseTypeEndianFlag: 128, invalid: 0 },
+    13: { size: 1, type: BaseType.BYTE, baseTypeEndianFlag: 0, invalid: 255 },
+    14: { size: 8, type: BaseType.SINT64, baseTypeEndianFlag: 128, invalid: 9223372036854776e3 },
+    15: { size: 8, type: BaseType.UINT64, baseTypeEndianFlag: 128, invalid: 18446744073709552e3 },
+    16: { size: 8, type: BaseType.UINT64Z, baseTypeEndianFlag: 128, invalid: 0 }
+  };
+  var NumericFieldTypes = [
+    "sint8",
+    "uint8",
+    "sint16",
+    "uint16",
+    "sint32",
+    "uint32",
+    "float32",
+    "float64",
+    "uint8z",
+    "uint16z",
+    "uint32z",
+    "byte",
+    "sint64",
+    "uint64",
+    "uint64z"
+  ];
+  var NumericFieldTypesSet = new Set(NumericFieldTypes);
+  var FieldTypeToJsType = {
+    "enum": "number",
+    "sint8": "number",
+    "uint8": "number",
+    "sint16": "number",
+    "uint16": "number",
+    "sint32": "number",
+    "uint32": "number",
+    "string": "string",
+    "float32": "number",
+    "float64": "number",
+    "uint8z": "number",
+    "uint16z": "number",
+    "uint32z": "number",
+    "byte": "number",
+    "sint64": "bigint",
+    "uint64": "bigint",
+    "uint64z": "bigint"
+  };
+  var BigIntFieldTypes = [
+    "sint64",
+    "uint64",
+    "uint64z"
+  ];
+  var FloatingPointFieldTypes = [
+    "float32",
+    "float64"
+  ];
+  var FieldTypeToBaseType = {
+    "enum": BaseType.UINT8,
+    "sint8": BaseType.SINT8,
+    "uint8": BaseType.UINT8,
+    "sint16": BaseType.SINT16,
+    "uint16": BaseType.UINT16,
+    "sint32": BaseType.SINT32,
+    "uint32": BaseType.UINT32,
+    "string": BaseType.STRING,
+    "float32": BaseType.FLOAT32,
+    "float64": BaseType.FLOAT64,
+    "uint8z": BaseType.UINT8Z,
+    "uint16z": BaseType.UINT16Z,
+    "uint32z": BaseType.UINT32Z,
+    "byte": BaseType.BYTE,
+    "sint64": BaseType.SINT64,
+    "uint64": BaseType.UINT64,
+    "uint64z": BaseType.UINT64Z
+  };
+  var BaseTypeToFieldType = {
+    [BaseType.ENUM]: "enum",
+    [BaseType.SINT8]: "sint8",
+    [BaseType.UINT8]: "uint8",
+    [BaseType.SINT16]: "sint16",
+    [BaseType.UINT16]: "uint16",
+    [BaseType.SINT32]: "sint32",
+    [BaseType.UINT32]: "uint32",
+    [BaseType.STRING]: "string",
+    [BaseType.FLOAT32]: "float32",
+    [BaseType.FLOAT64]: "float64",
+    [BaseType.UINT8Z]: "uint8z",
+    [BaseType.UINT16Z]: "uint16z",
+    [BaseType.UINT32Z]: "uint32z",
+    [BaseType.BYTE]: "byte",
+    [BaseType.SINT64]: "sint64",
+    [BaseType.UINT64]: "uint64",
+    [BaseType.UINT64Z]: "uint64z"
+  };
+  var isNullOrUndefined = (obj) => {
+    return obj == null;
+  };
+  var isObject = (obj) => {
+    return typeof obj === "object";
+  };
+  var isBoolean = (obj) => {
+    return "boolean" === typeof obj;
+  };
+  var isDate = (obj) => {
+    return typeof obj === "object" && obj instanceof Date;
+  };
+  var isString = (obj) => {
+    return typeof obj === "string";
+  };
+  var isBigInt = (obj) => {
+    return typeof obj === "bigint";
+  };
+  var isNumeric = (obj) => {
+    if (typeof obj === "number") {
+      return !isNaN(obj) && isFinite(obj);
+    }
+    if (typeof obj === "bigint") {
+      return true;
+    }
+    const num = parseFloat(obj);
+    return !isNaN(num) && isFinite(num);
+  };
+  var isNotNumberStringDateOrBoolean = (obj) => {
+    return !isNumberStringDateOrBoolean(obj);
+  };
+  var isNumberStringDateOrBoolean = (obj) => {
+    if (isNullOrUndefined(obj)) {
+      return false;
+    }
+    if (!isNumeric(obj) && !isDate(obj) && !isString(obj) && !isBoolean(obj)) {
+      return false;
+    }
+    return true;
+  };
+  var fit_default = {
+    BaseType,
+    BaseTypeMask,
+    BaseTypeDefinitions,
+    NumericFieldTypes,
+    NumericFieldTypesSet,
+    BigIntFieldTypes,
+    FloatingPointFieldTypes,
+    FieldTypeToBaseType,
+    BaseTypeToFieldType,
+    FieldTypeToJsType,
+    isNullOrUndefined,
+    isObject,
+    isBoolean,
+    isDate,
+    isString,
+    isBigInt,
+    isNumeric,
+    isNumberStringDateOrBoolean,
+    isNotNumberStringDateOrBoolean,
+    MAX_FIELD_SIZE: 255,
+    FIELD_DEFAULT_SCALE: 1,
+    FIELD_DEFAULT_OFFSET: 0,
+    MESG_DEFINITION_MASK: 64,
+    LOCAL_MESG_NUM_MASK: 15,
+    ARCH_LITTLE_ENDIAN: 0,
+    DEV_DATA_MASK: 32,
+    NULL_TERMINATOR: "\0"
+  };
+
+  // node_modules/@garmin/fitsdk/src/bit-stream.js
+  var _data, _array, _currentArrayPosition, _bitPerPosition, _isBigInt, _currentByte, _currentBit, _bitsAvailable, _BitStream_instances, nextByte_fn, throwError_fn;
+  var BitStream = class {
+    constructor(data, baseType = fit_default.BaseType.UINT8) {
+      __privateAdd(this, _BitStream_instances);
+      __privateAdd(this, _data, null);
+      __privateAdd(this, _array, null);
+      __privateAdd(this, _currentArrayPosition, 0);
+      __privateAdd(this, _bitPerPosition, 0);
+      __privateAdd(this, _isBigInt, false);
+      __privateAdd(this, _currentByte, 0);
+      __privateAdd(this, _currentBit, 0);
+      __privateAdd(this, _bitsAvailable, 0);
+      __privateSet(this, _data, Array.isArray(data) ? data : [data]);
+      const baseTypeSize = fit_default.BaseTypeDefinitions[baseType].size;
+      __privateSet(this, _bitPerPosition, baseTypeSize * 8);
+      __privateSet(this, _isBigInt, __privateGet(this, _bitPerPosition) > 32);
+      this.reset();
+    }
+    get bitsAvailable() {
+      return __privateGet(this, _bitsAvailable);
+    }
+    get hasBitsAvailable() {
+      return __privateGet(this, _bitsAvailable) > 0;
+    }
+    reset() {
+      __privateSet(this, _array, null);
+      __privateSet(this, _currentArrayPosition, 0);
+      __privateSet(this, _bitsAvailable, __privateGet(this, _bitPerPosition) * __privateGet(this, _data).length);
+      __privateSet(this, _currentByte, 0);
+      __privateSet(this, _currentBit, 0);
+    }
+    readBit() {
+      if (!this.hasBitsAvailable) {
+        __privateMethod(this, _BitStream_instances, throwError_fn).call(this);
+      }
+      if (__privateGet(this, _array) === null) {
+        __privateSet(this, _array, __privateGet(this, _data));
+        __privateSet(this, _currentArrayPosition, __privateGet(this, _data).length - __privateGet(this, _bitsAvailable) / __privateGet(this, _bitPerPosition));
+        __privateMethod(this, _BitStream_instances, nextByte_fn).call(this);
+      }
+      if (__privateGet(this, _currentBit) >= __privateGet(this, _bitPerPosition)) {
+        __privateMethod(this, _BitStream_instances, nextByte_fn).call(this);
+      }
+      let bit;
+      if (__privateGet(this, _isBigInt)) {
+        bit = Number(__privateGet(this, _currentByte) & 1n);
+        __privateSet(this, _currentByte, __privateGet(this, _currentByte) >> 1n);
+      } else {
+        bit = __privateGet(this, _currentByte) & 1;
+        __privateSet(this, _currentByte, __privateGet(this, _currentByte) >> 1);
+      }
+      __privateWrapper(this, _currentBit)._++;
+      __privateWrapper(this, _bitsAvailable)._--;
+      return bit;
+    }
+    readBits(nBitsToRead) {
+      if (nBitsToRead === __privateGet(this, _bitPerPosition) && __privateGet(this, _array) === null) {
+        if (!this.hasBitsAvailable) {
+          __privateMethod(this, _BitStream_instances, throwError_fn).call(this);
+        }
+        const index = __privateGet(this, _data).length - __privateGet(this, _bitsAvailable) / __privateGet(this, _bitPerPosition);
+        const value2 = __privateGet(this, _data)[index];
+        __privateSet(this, _bitsAvailable, __privateGet(this, _bitsAvailable) - nBitsToRead);
+        if (__privateGet(this, _isBigInt)) {
+          return Number(BigInt.asUintN(nBitsToRead, value2));
+        }
+        if (nBitsToRead < 32) {
+          return (value2 & (1 << nBitsToRead) - 1) >>> 0;
+        }
+        return value2 >>> 0;
+      }
+      if (nBitsToRead <= 32) {
+        let value2 = 0;
+        for (let i = 0; i < nBitsToRead; i++) {
+          value2 |= this.readBit() << i;
+        }
+        return value2 >>> 0;
+      }
+      let value = 0n;
+      for (let i = 0, shift = 0n; i < nBitsToRead; i++, shift++) {
+        value |= BigInt(this.readBit()) << shift;
+      }
+      return Number(value);
+    }
+    get array() {
+      return __privateGet(this, _array);
+    }
+  };
+  _data = new WeakMap();
+  _array = new WeakMap();
+  _currentArrayPosition = new WeakMap();
+  _bitPerPosition = new WeakMap();
+  _isBigInt = new WeakMap();
+  _currentByte = new WeakMap();
+  _currentBit = new WeakMap();
+  _bitsAvailable = new WeakMap();
+  _BitStream_instances = new WeakSet();
+  nextByte_fn = function() {
+    if (__privateGet(this, _currentArrayPosition) >= __privateGet(this, _array).length) {
+      __privateMethod(this, _BitStream_instances, throwError_fn).call(this);
+    }
+    __privateSet(this, _currentByte, __privateGet(this, _array)[__privateWrapper(this, _currentArrayPosition)._++]);
+    __privateSet(this, _currentBit, 0);
+  };
+  throwError_fn = function(error = "") {
+    throw Error("FIT Runtime Error no bits available.");
+  };
+  var bit_stream_default = BitStream;
+
+  // node_modules/@garmin/fitsdk/src/utils.js
+  var FIT_EPOCH_MS = 6310656e5;
+  var convertDateTimeToDate = (datetime) => {
+    return new Date((datetime ?? 0) * 1e3 + FIT_EPOCH_MS);
+  };
+  var convertDateToDateTime = (date) => {
+    return (date.getTime() - FIT_EPOCH_MS) / 1e3;
+  };
+  var utils_default = {
+    FIT_EPOCH_MS,
+    convertDateTimeToDate,
+    convertDateToDateTime,
+    FitBaseType: fit_default.BaseType,
+    BaseTypeToFieldType: fit_default.BaseTypeToFieldType,
+    FieldTypeToBaseType: fit_default.FieldTypeToBaseType
+  };
+
+  // node_modules/@garmin/fitsdk/src/utils-hr-mesg.js
+  var mergeHeartRates = (hrMesgs, recordMesgs) => {
+    if (hrMesgs == null || recordMesgs == null || hrMesgs.length == 0 || recordMesgs.length == 0) {
+      return;
+    }
+    const heartrates = expandHeartRates(hrMesgs);
+    let heartrateIndex = 0;
+    let recordRangeStartTime = null;
+    for (let i = 0; i < recordMesgs.length; ++i) {
+      const recordMesg = recordMesgs[i];
+      let hrSum = 0;
+      let hrSumCount = 0;
+      const recordRangeEndTime = secondsSinceFitEpoch(recordMesg.timestamp);
+      if (recordRangeStartTime == null) {
+        recordRangeStartTime = recordRangeEndTime;
+      }
+      if (recordRangeStartTime === recordRangeEndTime) {
+        recordRangeStartTime--;
+        heartrateIndex = heartrateIndex >= 1 ? heartrateIndex - 1 : 0;
+      }
+      let findingInRangeHrMesgs = true;
+      while (findingInRangeHrMesgs && heartrateIndex < heartrates.length) {
+        const heartrate = heartrates[heartrateIndex];
+        if (heartrate.timestamp > recordRangeStartTime && heartrate.timestamp <= recordRangeEndTime) {
+          hrSum += heartrate.heartRate;
+          hrSumCount++;
+        } else if (heartrate.timestamp > recordRangeEndTime) {
+          findingInRangeHrMesgs = false;
+          if (hrSumCount > 0) {
+            const avgHR = Math.round(hrSum / hrSumCount);
+            recordMesg.heartRate = avgHR;
+          }
+          hrSum = 0;
+          hrSumCount = 0;
+          recordRangeStartTime = recordRangeEndTime;
+          break;
+        }
+        heartrateIndex++;
+      }
+    }
+  };
+  var expandHeartRates = (hrMesgs) => {
+    const GAP_INCREMENT_MILLISECONDS = 250;
+    const GAP_INCREMENT_SECONDS = GAP_INCREMENT_MILLISECONDS / 1e3;
+    const GAP_MAX_MILLISECONDS = 5e3;
+    const GAP_MAX_STEPS = GAP_MAX_MILLISECONDS / GAP_INCREMENT_MILLISECONDS;
+    if (hrMesgs == null || hrMesgs.length == 0) {
+      return [];
+    }
+    let anchorEventTimestamp = 0;
+    let anchorTimestamp = null;
+    const heartrates = [];
+    hrMesgs.forEach((hrMesg) => {
+      if (hrMesg == null) {
+        throwError("HR mesg must not be null");
+      }
+      const eventTimestamps = Array.isArray(hrMesg.eventTimestamp) ? hrMesg.eventTimestamp : [hrMesg.eventTimestamp];
+      const filteredBpms = Array.isArray(hrMesg.filteredBpm) ? hrMesg.filteredBpm : [hrMesg.filteredBpm];
+      if (hrMesg.timestamp != null) {
+        anchorTimestamp = secondsSinceFitEpoch(hrMesg.timestamp);
+        if (hrMesg.fractionalTimestamp != null) {
+          anchorTimestamp += hrMesg.fractionalTimestamp;
+        }
+        if (eventTimestamps.length == 1) {
+          anchorEventTimestamp = eventTimestamps[0];
+        } else {
+          throwError("anchor HR mesg must have 1 event_timestamp");
+        }
+      }
+      if (anchorTimestamp == null || anchorEventTimestamp == null) {
+        throwError("no anchor timestamp received in a HR mesg before delta HR mesgs");
+      } else if (eventTimestamps.length != filteredBpms.length) {
+        throwError("HR mesg with mismatching event timestamp and filtered bpm");
+      }
+      for (let i = 0; i < eventTimestamps.length; i++) {
+        let eventTimestamp = eventTimestamps[i];
+        if (eventTimestamp < anchorEventTimestamp) {
+          if (anchorEventTimestamp - eventTimestamp > 4194304) {
+            eventTimestamp += 4194304;
+          } else {
+            throwError("anchor event_timestamp is greater than subsequent event_timestamp. This does not allow for correct delta calculation.");
+          }
+        }
+        const currentHr = { timestamp: anchorTimestamp, heartRate: filteredBpms[i] };
+        currentHr.timestamp += eventTimestamp - anchorEventTimestamp;
+        if (heartrates.length > 0) {
+          const previousHR = heartrates[heartrates.length - 1];
+          let gapInMilliseconds = Math.abs(currentHr.timestamp - previousHR.timestamp) * 1e3;
+          let step = 1;
+          while (gapInMilliseconds > GAP_INCREMENT_MILLISECONDS && step <= GAP_MAX_STEPS) {
+            const gapHR = { timestamp: previousHR.timestamp, heartRate: previousHR.heartRate };
+            gapHR.timestamp += GAP_INCREMENT_SECONDS * step;
+            heartrates.push(gapHR);
+            gapInMilliseconds -= GAP_INCREMENT_MILLISECONDS;
+            step++;
+          }
+        }
+        heartrates.push(currentHr);
+      }
+    });
+    return heartrates;
+  };
+  var secondsSinceFitEpoch = (timestamp) => {
+    if (timestamp instanceof Date) {
+      return (timestamp.getTime() - utils_default.FIT_EPOCH_MS) / 1e3;
+    }
+    return timestamp;
+  };
+  var throwError = (error = "") => {
+    throw Error(`FIT Runtime Error ${error}`.trimEnd());
+  };
+  var utils_hr_mesg_default = { mergeHeartRates, expandHeartRates };
+
+  // node_modules/@garmin/fitsdk/src/profile.js
+  var Profile = {
+    version: {
+      major: 21,
+      minor: 212,
+      patch: 0,
+      type: "Release"
+    },
+    CommonFields: {
+      PartIndex: 250,
+      Timestamp: 253,
+      MessageIndex: 254
+    },
+    messages: {
+      0: {
+        num: 0,
+        // Must be first message in file.
+        name: "fileId",
+        messagesKey: "fileIdMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "type",
+            type: "file",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "manufacturer",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "product",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "faveroProduct",
+                type: "faveroProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 263 }
+                ]
+              },
+              {
+                name: "garminProduct",
+                type: "garminProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 1 },
+                  { name: "manufacturer", value: 15 },
+                  { name: "manufacturer", value: 13 },
+                  { name: "manufacturer", value: 89 }
+                ]
+              }
+            ]
+          },
+          3: {
+            num: 3,
+            name: "serialNumber",
+            type: "uint32z",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Only set for files that are can be created/erased.
+            name: "timeCreated",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Only set for files that are not created/erased.
+            name: "number",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Optional free form string to indicate the devices name or model
+            name: "productName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      49: {
+        num: 49,
+        name: "fileCreator",
+        messagesKey: "fileCreatorMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "softwareVersion",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "hardwareVersion",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      162: {
+        num: 162,
+        name: "timestampCorrelation",
+        messagesKey: "timestampCorrelationMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of UTC timestamp at the time the system timestamp was recorded.
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Fractional part of the UTC timestamp at the time the system timestamp was recorded.
+            name: "fractionalTimestamp",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 32768,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Whole second part of the system timestamp
+            name: "systemTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Fractional part of the system timestamp
+            name: "fractionalSystemTimestamp",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 32768,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // timestamp epoch expressed in local time used to convert timestamps to local time
+            name: "localTimestamp",
+            type: "localDateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Millisecond part of the UTC timestamp at the time the system timestamp was recorded.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Millisecond part of the system timestamp
+            name: "systemTimestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      35: {
+        num: 35,
+        name: "software",
+        messagesKey: "softwareMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "version",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "partNumber",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      106: {
+        num: 106,
+        name: "slaveDevice",
+        messagesKey: "slaveDeviceMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "manufacturer",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "product",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "faveroProduct",
+                type: "faveroProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 263 }
+                ]
+              },
+              {
+                name: "garminProduct",
+                type: "garminProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 1 },
+                  { name: "manufacturer", value: 15 },
+                  { name: "manufacturer", value: 13 },
+                  { name: "manufacturer", value: 89 }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      1: {
+        num: 1,
+        name: "capabilities",
+        messagesKey: "capabilitiesMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Use language_bits_x types where x is index of array.
+            name: "languages",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Use sport_bits_x types where x is index of array.
+            name: "sports",
+            type: "sportBits0",
+            baseType: "uint8z",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "workoutsSupported",
+            type: "workoutCapabilities",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "connectivitySupported",
+            type: "connectivityCapabilities",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      37: {
+        num: 37,
+        name: "fileCapabilities",
+        messagesKey: "fileCapabilitiesMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "type",
+            type: "file",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "flags",
+            type: "fileFlags",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "directory",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "maxCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "maxSize",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bytes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      38: {
+        num: 38,
+        name: "mesgCapabilities",
+        messagesKey: "mesgCapabilitiesMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "file",
+            type: "file",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "mesgNum",
+            type: "mesgNum",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "countType",
+            type: "mesgCount",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "count",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "numPerFile",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "countType", value: 0 }
+                ]
+              },
+              {
+                name: "maxPerFile",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "countType", value: 1 }
+                ]
+              },
+              {
+                name: "maxPerFileType",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "countType", value: 2 }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      39: {
+        num: 39,
+        name: "fieldCapabilities",
+        messagesKey: "fieldCapabilitiesMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "file",
+            type: "file",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "mesgNum",
+            type: "mesgNum",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "fieldNum",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "count",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      2: {
+        num: 2,
+        name: "deviceSettings",
+        messagesKey: "deviceSettingsMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Index into time zone arrays.
+            name: "activeTimeZone",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Offset from system time. Required to convert timestamp from system time to UTC.
+            name: "utcOffset",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Offset from system time.
+            name: "timeOffset",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Display mode for the time
+            name: "timeMode",
+            type: "timeMode",
+            baseType: "enum",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // timezone offset in 1/4 hour increments
+            name: "timeZoneOffset",
+            type: "sint8",
+            baseType: "sint8",
+            array: true,
+            scale: 4,
+            offset: 0,
+            units: "hr",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // Mode for backlight
+            name: "backlightMode",
+            type: "backlightMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          36: {
+            num: 36,
+            // Enabled state of the activity tracker functionality
+            name: "activityTrackerEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          39: {
+            num: 39,
+            // UTC timestamp used to set the devices clock and date
+            name: "clockTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          40: {
+            num: 40,
+            // Bitfield to configure enabled screens for each supported loop
+            name: "pagesEnabled",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          46: {
+            num: 46,
+            // Enabled state of the move alert
+            name: "moveAlertEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          47: {
+            num: 47,
+            // Display mode for the date
+            name: "dateMode",
+            type: "dateMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          55: {
+            num: 55,
+            name: "displayOrientation",
+            type: "displayOrientation",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          56: {
+            num: 56,
+            name: "mountingSide",
+            type: "side",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          57: {
+            num: 57,
+            // Bitfield to indicate one page as default for each supported loop
+            name: "defaultPage",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          58: {
+            num: 58,
+            // Minimum steps before an autosync can occur
+            name: "autosyncMinSteps",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "steps",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          59: {
+            num: 59,
+            // Minimum minutes before an autosync can occur
+            name: "autosyncMinTime",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "minutes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          80: {
+            num: 80,
+            // Enable auto-detect setting for the lactate threshold feature.
+            name: "lactateThresholdAutodetectEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          86: {
+            num: 86,
+            // Automatically upload using BLE
+            name: "bleAutoUploadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          89: {
+            num: 89,
+            // Helps to conserve battery by changing modes
+            name: "autoSyncFrequency",
+            type: "autoSyncFrequency",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          90: {
+            num: 90,
+            // Allows setting specific activities auto-activity detect enabled/disabled settings
+            name: "autoActivityDetect",
+            type: "autoActivityDetect",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          94: {
+            num: 94,
+            // Number of screens configured to display
+            name: "numberOfScreens",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          95: {
+            num: 95,
+            // Smart Notification display orientation
+            name: "smartNotificationDisplayOrientation",
+            type: "displayOrientation",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          134: {
+            num: 134,
+            name: "tapInterface",
+            type: "switch",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          174: {
+            num: 174,
+            // Used to hold the tap threshold setting
+            name: "tapSensitivity",
+            type: "tapSensitivity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      3: {
+        num: 3,
+        name: "userProfile",
+        messagesKey: "userProfileMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Used for Morning Report greeting
+            name: "friendlyName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "gender",
+            type: "gender",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "age",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "years",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "height",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "weight",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "language",
+            type: "language",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "elevSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "weightSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "restingHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "defaultMaxRunningHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "defaultMaxBikingHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "defaultMaxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "hrSetting",
+            type: "displayHeart",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "speedSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "distSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            name: "powerSetting",
+            type: "displayPower",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            name: "activityClass",
+            type: "activityClass",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            name: "positionSetting",
+            type: "displayPosition",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "temperatureSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "localId",
+            type: "userLocalId",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "globalId",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          28: {
+            num: 28,
+            // Typical wake time
+            name: "wakeTime",
+            type: "localtimeIntoDay",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          29: {
+            num: 29,
+            // Typical bed time
+            name: "sleepTime",
+            type: "localtimeIntoDay",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          30: {
+            num: 30,
+            name: "heightSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          31: {
+            num: 31,
+            // User defined running step length set to 0 for auto length
+            name: "userRunningStepLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            // User defined walking step length set to 0 for auto length
+            name: "userWalkingStepLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          47: {
+            num: 47,
+            name: "depthSetting",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          49: {
+            num: 49,
+            name: "diveCount",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      4: {
+        num: 4,
+        name: "hrmProfile",
+        messagesKey: "hrmProfileMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "hrmAntId",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "logHrv",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "hrmAntIdTransType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      5: {
+        num: 5,
+        name: "sdmProfile",
+        messagesKey: "sdmProfileMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "sdmAntId",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "sdmCalFactor",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "odometer",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Use footpod for speed source instead of GPS
+            name: "speedSource",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "sdmAntIdTransType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Rollover counter that can be used to extend the odometer
+            name: "odometerRollover",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      6: {
+        num: 6,
+        name: "bikeProfile",
+        messagesKey: "bikeProfileMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "odometer",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "bikeSpdAntId",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "bikeCadAntId",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "bikeSpdcadAntId",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "bikePowerAntId",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "customWheelsize",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "autoWheelsize",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "bikeWeight",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "powerCalFactor",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "autoWheelCal",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "autoPowerZero",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "id",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "spdEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            name: "cadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            name: "spdcadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            name: "powerEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            name: "crankLength",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: -110,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "bikeSpdAntIdTransType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "bikeCadAntIdTransType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "bikeSpdcadAntIdTransType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            name: "bikePowerAntIdTransType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          37: {
+            num: 37,
+            // Rollover counter that can be used to extend the odometer
+            name: "odometerRollover",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          38: {
+            num: 38,
+            // Number of front gears
+            name: "frontGearNum",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          39: {
+            num: 39,
+            // Number of teeth on each gear 0 is innermost
+            name: "frontGear",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          40: {
+            num: 40,
+            // Number of rear gears
+            name: "rearGearNum",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          41: {
+            num: 41,
+            // Number of teeth on each gear 0 is innermost
+            name: "rearGear",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          44: {
+            num: 44,
+            name: "shimanoDi2Enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      127: {
+        num: 127,
+        name: "connectivity",
+        messagesKey: "connectivityMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Use Bluetooth for connectivity features
+            name: "bluetoothEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Use Bluetooth Low Energy for connectivity features
+            name: "bluetoothLeEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Use ANT for connectivity features
+            name: "antEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "liveTrackingEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "weatherConditionsEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "weatherAlertsEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "autoActivityUploadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "courseDownloadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "workoutDownloadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "gpsEphemerisDownloadEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "incidentDetectionEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "grouptrackEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      159: {
+        num: 159,
+        name: "watchfaceSettings",
+        messagesKey: "watchfaceSettingsMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "mode",
+            type: "watchfaceMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "layout",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "digitalLayout",
+                type: "digitalWatchfaceLayout",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "mode", value: 0 }
+                ]
+              },
+              {
+                name: "analogLayout",
+                type: "analogWatchfaceLayout",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "mode", value: 1 }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      188: {
+        num: 188,
+        name: "ohrSettings",
+        messagesKey: "ohrSettingsMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "enabled",
+            type: "switch",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      216: {
+        num: 216,
+        name: "timeInZone",
+        messagesKey: "timeInZoneMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "referenceMesg",
+            type: "mesgNum",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "referenceIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "timeInHrZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "timeInSpeedZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "timeInCadenceZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "timeInPowerZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "hrZoneHighBoundary",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "speedZoneHighBoundary",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "cadenceZoneHighBondary",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "powerZoneHighBoundary",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "hrCalcType",
+            type: "hrZoneCalc",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "maxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "restingHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "thresholdHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "pwrCalcType",
+            type: "pwrZoneCalc",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "functionalThresholdPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      7: {
+        num: 7,
+        name: "zonesTarget",
+        messagesKey: "zonesTargetMesgs",
+        fields: {
+          1: {
+            num: 1,
+            name: "maxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "thresholdHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "functionalThresholdPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "hrCalcType",
+            type: "hrZoneCalc",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "pwrCalcType",
+            type: "pwrZoneCalc",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      12: {
+        num: 12,
+        name: "sport",
+        messagesKey: "sportMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      8: {
+        num: 8,
+        name: "hrZone",
+        messagesKey: "hrZoneMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "highBpm",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      53: {
+        num: 53,
+        name: "speedZone",
+        messagesKey: "speedZoneMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "highValue",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      131: {
+        num: 131,
+        name: "cadenceZone",
+        messagesKey: "cadenceZoneMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "highValue",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      9: {
+        num: 9,
+        name: "powerZone",
+        messagesKey: "powerZoneMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "highValue",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      10: {
+        num: 10,
+        name: "metZone",
+        messagesKey: "metZoneMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "highBpm",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "calories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "kcal / min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "fatCalories",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "kcal / min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      13: {
+        num: 13,
+        name: "trainingSettings",
+        messagesKey: "trainingSettingsMesgs",
+        fields: {
+          31: {
+            num: 31,
+            name: "targetDistance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            name: "targetSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          33: {
+            num: 33,
+            name: "targetTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          153: {
+            num: 153,
+            // A more precise target speed field
+            name: "preciseTargetSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e6,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      258: {
+        num: 258,
+        name: "diveSettings",
+        messagesKey: "diveSettingsMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "model",
+            type: "tissueModelType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "gfLow",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "gfHigh",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "waterType",
+            type: "waterType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Fresh water is usually 1000; salt water is usually 1025
+            name: "waterDensity",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kg/m^3",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Typically 1.40
+            name: "po2Warn",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Typically 1.60
+            name: "po2Critical",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "po2Deco",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "safetyStopEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "bottomDepth",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "bottomTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "apneaCountdownEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "apneaCountdownTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "backlightMode",
+            type: "diveBacklightMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "backlightBrightness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            name: "backlightTimeout",
+            type: "backlightTimeout",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            // Time between surfacing and ending the activity
+            name: "repeatDiveInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            // Time at safety stop (if enabled)
+            name: "safetyStopTime",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            name: "heartRateSourceType",
+            type: "sourceType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            name: "heartRateSource",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "heartRateAntplusDeviceType",
+                type: "antplusDeviceType",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "heartRateSourceType", value: 1 }
+                ]
+              },
+              {
+                name: "heartRateLocalDeviceType",
+                type: "localDeviceType",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "heartRateSourceType", value: 5 }
+                ]
+              }
+            ]
+          },
+          21: {
+            num: 21,
+            // Index of travel dive_gas message
+            name: "travelGas",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            // If low PO2 should be switched to automatically
+            name: "ccrLowSetpointSwitchMode",
+            type: "ccrSetpointSwitchMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            // Target PO2 when using low setpoint
+            name: "ccrLowSetpoint",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            // Depth to switch to low setpoint in automatic mode
+            name: "ccrLowSetpointDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            // If high PO2 should be switched to automatically
+            name: "ccrHighSetpointSwitchMode",
+            type: "ccrSetpointSwitchMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          26: {
+            num: 26,
+            // Target PO2 when using high setpoint
+            name: "ccrHighSetpoint",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          27: {
+            num: 27,
+            // Depth to switch to high setpoint in automatic mode
+            name: "ccrHighSetpointDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          29: {
+            num: 29,
+            // Type of gas consumption rate to display. Some values are only valid if tank volume is known.
+            name: "gasConsumptionDisplay",
+            type: "gasConsumptionRateType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          30: {
+            num: 30,
+            // Indicates whether the up key is enabled during dives
+            name: "upKeyEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          35: {
+            num: 35,
+            // Sounds and vibration enabled or disabled in-dive
+            name: "diveSounds",
+            type: "tone",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          36: {
+            num: 36,
+            // Usually 1.0/1.5/2.0 representing 3/4.5/6m or 10/15/20ft
+            name: "lastStopMultiple",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          37: {
+            num: 37,
+            // Indicates which guidelines to use for no-fly surface interval.
+            name: "noFlyTimeMode",
+            type: "noFlyTimeMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      262: {
+        num: 262,
+        name: "diveAlarm",
+        messagesKey: "diveAlarmMesgs",
+        fields: {
+          254: {
+            num: 254,
+            // Index of the alarm
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Depth setting (m) for depth type alarms
+            name: "depth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Time setting (s) for time type alarms
+            name: "time",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Enablement flag
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Alarm type setting
+            name: "alarmType",
+            type: "diveAlarmType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Tone and Vibe setting for the alarm
+            name: "sound",
+            type: "tone",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Dive types the alarm will trigger on
+            name: "diveTypes",
+            type: "subSport",
+            baseType: "enum",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Alarm ID
+            name: "id",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Show a visible pop-up for this alarm
+            name: "popupEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Trigger the alarm on descent
+            name: "triggerOnDescent",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Trigger the alarm on ascent
+            name: "triggerOnAscent",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // Repeat alarm each time threshold is crossed?
+            name: "repeating",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            // Ascent/descent rate (mps) setting for speed type alarms
+            name: "speed",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "mps",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      393: {
+        num: 393,
+        name: "diveApneaAlarm",
+        messagesKey: "diveApneaAlarmMesgs",
+        fields: {
+          254: {
+            num: 254,
+            // Index of the alarm
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Depth setting (m) for depth type alarms
+            name: "depth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Time setting (s) for time type alarms
+            name: "time",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Enablement flag
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Alarm type setting
+            name: "alarmType",
+            type: "diveAlarmType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Tone and Vibe setting for the alarm.
+            name: "sound",
+            type: "tone",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Dive types the alarm will trigger on
+            name: "diveTypes",
+            type: "subSport",
+            baseType: "enum",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Alarm ID
+            name: "id",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Show a visible pop-up for this alarm
+            name: "popupEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Trigger the alarm on descent
+            name: "triggerOnDescent",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Trigger the alarm on ascent
+            name: "triggerOnAscent",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // Repeat alarm each time threshold is crossed?
+            name: "repeating",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            // Ascent/descent rate (mps) setting for speed type alarms
+            name: "speed",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "mps",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      259: {
+        num: 259,
+        name: "diveGas",
+        messagesKey: "diveGasMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "heliumContent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "oxygenContent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "status",
+            type: "diveGasStatus",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "mode",
+            type: "diveGasMode",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      15: {
+        num: 15,
+        name: "goal",
+        messagesKey: "goalMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "startDate",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "endDate",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "type",
+            type: "goal",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "value",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "repeat",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "targetValue",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "recurrence",
+            type: "goalRecurrence",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "recurrenceValue",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "source",
+            type: "goalSource",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      34: {
+        num: 34,
+        name: "activity",
+        messagesKey: "activityMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Exclude pauses
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "numSessions",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "type",
+            type: "activity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "event",
+            type: "event",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "eventType",
+            type: "eventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // timestamp epoch expressed in local time, used to convert activity timestamps to local time
+            name: "localTimestamp",
+            type: "localDateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "eventGroup",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      18: {
+        num: 18,
+        name: "session",
+        messagesKey: "sessionMesgs",
+        fields: {
+          254: {
+            num: 254,
+            // Selected bit is set for the current session.
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // session
+            name: "event",
+            type: "event",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // stop
+            name: "eventType",
+            type: "eventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "startPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "startPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Time (includes pauses)
+            name: "totalElapsedTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Timer Time (excludes pauses)
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "totalDistance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "totalCycles",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "totalReps",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "reps",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "subSport", value: 20 },
+                  { name: "sport", value: 62 }
+                ]
+              },
+              {
+                name: "totalStrides",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "strides",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 1 },
+                  { name: "sport", value: 11 }
+                ]
+              },
+              {
+                name: "totalStrokes",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "strokes",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 2 },
+                  { name: "sport", value: 5 },
+                  { name: "sport", value: 15 },
+                  { name: "sport", value: 37 }
+                ]
+              },
+              {
+                name: "totalPushes",
+                // total number of pushes in a session
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "pushes",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 66 },
+                  { name: "sport", value: 65 }
+                ]
+              }
+            ]
+          },
+          11: {
+            num: 11,
+            name: "totalCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "totalFatCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            // total_distance / total_timer_time
+            name: "avgSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1e3],
+            offset: [0],
+            units: ["m/s"],
+            bits: [16],
+            components: ["124"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "maxSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1e3],
+            offset: [0],
+            units: ["m/s"],
+            bits: [16],
+            components: ["125"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            // average heart rate (excludes pause time)
+            name: "avgHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            name: "maxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            // total_cycles / total_timer_time if non_zero_avg_cadence otherwise total_cycles / total_elapsed_time
+            name: "avgCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "avgRunningCadence",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "strides/min",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 1 }
+                ]
+              }
+            ]
+          },
+          19: {
+            num: 19,
+            name: "maxCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "maxRunningCadence",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "strides/min",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 1 }
+                ]
+              }
+            ]
+          },
+          20: {
+            num: 20,
+            // total_power / total_timer_time if non_zero_avg_power otherwise total_power / total_elapsed_time
+            name: "avgPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "maxPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "totalAscent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "totalDescent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            name: "totalTrainingEffect",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            name: "firstLapIndex",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          26: {
+            num: 26,
+            name: "numLaps",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          27: {
+            num: 27,
+            name: "eventGroup",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          28: {
+            num: 28,
+            name: "trigger",
+            type: "sessionTrigger",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          29: {
+            num: 29,
+            // North east corner latitude
+            name: "necLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          30: {
+            num: 30,
+            // North east corner longitude
+            name: "necLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          31: {
+            num: 31,
+            // South west corner latitude
+            name: "swcLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            // South west corner longitude
+            name: "swcLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          33: {
+            num: 33,
+            // # of lengths of swim pool
+            name: "numLengths",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "lengths",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          34: {
+            num: 34,
+            name: "normalizedPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          35: {
+            num: 35,
+            name: "trainingStressScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "tss",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          36: {
+            num: 36,
+            name: "intensityFactor",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "if",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          37: {
+            num: 37,
+            name: "leftRightBalance",
+            type: "leftRightBalance100",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          38: {
+            num: 38,
+            name: "endPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          39: {
+            num: 39,
+            name: "endPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          41: {
+            num: 41,
+            name: "avgStrokeCount",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "strokes/lap",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          42: {
+            num: 42,
+            name: "avgStrokeDistance",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          43: {
+            num: 43,
+            name: "swimStroke",
+            type: "swimStroke",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "swim_stroke",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          44: {
+            num: 44,
+            name: "poolLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          45: {
+            num: 45,
+            name: "thresholdPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          46: {
+            num: 46,
+            name: "poolLengthUnit",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          47: {
+            num: 47,
+            // # of active lengths of swim pool
+            name: "numActiveLengths",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "lengths",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          48: {
+            num: 48,
+            name: "totalWork",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "J",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          49: {
+            num: 49,
+            name: "avgAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["126"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          50: {
+            num: 50,
+            name: "maxAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["128"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          51: {
+            num: 51,
+            name: "gpsAccuracy",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          52: {
+            num: 52,
+            name: "avgGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          53: {
+            num: 53,
+            name: "avgPosGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          54: {
+            num: 54,
+            name: "avgNegGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          55: {
+            num: 55,
+            name: "maxPosGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          56: {
+            num: 56,
+            name: "maxNegGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          57: {
+            num: 57,
+            name: "avgTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          58: {
+            num: 58,
+            name: "maxTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          59: {
+            num: 59,
+            name: "totalMovingTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          60: {
+            num: 60,
+            name: "avgPosVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          61: {
+            num: 61,
+            name: "avgNegVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          62: {
+            num: 62,
+            name: "maxPosVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          63: {
+            num: 63,
+            name: "maxNegVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          64: {
+            num: 64,
+            name: "minHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          65: {
+            num: 65,
+            name: "timeInHrZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          66: {
+            num: 66,
+            name: "timeInSpeedZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          67: {
+            num: 67,
+            name: "timeInCadenceZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          68: {
+            num: 68,
+            name: "timeInPowerZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          69: {
+            num: 69,
+            name: "avgLapTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          70: {
+            num: 70,
+            name: "bestLapIndex",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          71: {
+            num: 71,
+            name: "minAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["127"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          78: {
+            num: 78,
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          82: {
+            num: 82,
+            name: "playerScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          83: {
+            num: 83,
+            name: "opponentScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          84: {
+            num: 84,
+            name: "opponentName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          85: {
+            num: 85,
+            // stroke_type enum used as the index
+            name: "strokeCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          86: {
+            num: 86,
+            // zone number used as the index
+            name: "zoneCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          87: {
+            num: 87,
+            name: "maxBallSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          88: {
+            num: 88,
+            name: "avgBallSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          89: {
+            num: 89,
+            name: "avgVerticalOscillation",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          90: {
+            num: 90,
+            name: "avgStanceTimePercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          91: {
+            num: 91,
+            name: "avgStanceTime",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          92: {
+            num: 92,
+            // fractional part of the avg_cadence
+            name: "avgFractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          93: {
+            num: 93,
+            // fractional part of the max_cadence
+            name: "maxFractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          94: {
+            num: 94,
+            // fractional part of the total_cycles
+            name: "totalFractionalCycles",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          95: {
+            num: 95,
+            // Avg saturated and unsaturated hemoglobin
+            name: "avgTotalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          96: {
+            num: 96,
+            // Min saturated and unsaturated hemoglobin
+            name: "minTotalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          97: {
+            num: 97,
+            // Max saturated and unsaturated hemoglobin
+            name: "maxTotalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          98: {
+            num: 98,
+            // Avg percentage of hemoglobin saturated with oxygen
+            name: "avgSaturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          99: {
+            num: 99,
+            // Min percentage of hemoglobin saturated with oxygen
+            name: "minSaturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          100: {
+            num: 100,
+            // Max percentage of hemoglobin saturated with oxygen
+            name: "maxSaturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          101: {
+            num: 101,
+            name: "avgLeftTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          102: {
+            num: 102,
+            name: "avgRightTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          103: {
+            num: 103,
+            name: "avgLeftPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          104: {
+            num: 104,
+            name: "avgRightPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          105: {
+            num: 105,
+            name: "avgCombinedPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          110: {
+            num: 110,
+            // Sport name from associated sport mesg
+            name: "sportProfileName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          111: {
+            num: 111,
+            name: "sportIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          112: {
+            num: 112,
+            // Total time spend in the standing position
+            name: "timeStanding",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          113: {
+            num: 113,
+            // Number of transitions to the standing state
+            name: "standCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          114: {
+            num: 114,
+            // Average platform center offset Left
+            name: "avgLeftPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          115: {
+            num: 115,
+            // Average platform center offset Right
+            name: "avgRightPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          116: {
+            num: 116,
+            // Average left power phase angles. Indexes defined by power_phase_type.
+            name: "avgLeftPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          117: {
+            num: 117,
+            // Average left power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "avgLeftPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          118: {
+            num: 118,
+            // Average right power phase angles. Data value indexes defined by power_phase_type.
+            name: "avgRightPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          119: {
+            num: 119,
+            // Average right power phase peak angles data value indexes defined by power_phase_type.
+            name: "avgRightPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          120: {
+            num: 120,
+            // Average power by position. Data value indexes defined by rider_position_type.
+            name: "avgPowerPosition",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          121: {
+            num: 121,
+            // Maximum power by position. Data value indexes defined by rider_position_type.
+            name: "maxPowerPosition",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          122: {
+            num: 122,
+            // Average cadence by position. Data value indexes defined by rider_position_type.
+            name: "avgCadencePosition",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          123: {
+            num: 123,
+            // Maximum cadence by position. Data value indexes defined by rider_position_type.
+            name: "maxCadencePosition",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          124: {
+            num: 124,
+            // total_distance / total_timer_time
+            name: "enhancedAvgSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          125: {
+            num: 125,
+            name: "enhancedMaxSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          126: {
+            num: 126,
+            name: "enhancedAvgAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          127: {
+            num: 127,
+            name: "enhancedMinAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          128: {
+            num: 128,
+            name: "enhancedMaxAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          129: {
+            num: 129,
+            // lev average motor power during session
+            name: "avgLevMotorPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          130: {
+            num: 130,
+            // lev maximum motor power during session
+            name: "maxLevMotorPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          131: {
+            num: 131,
+            // lev battery consumption during session
+            name: "levBatteryConsumption",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          132: {
+            num: 132,
+            name: "avgVerticalRatio",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          133: {
+            num: 133,
+            name: "avgStanceTimeBalance",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          134: {
+            num: 134,
+            name: "avgStepLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          137: {
+            num: 137,
+            name: "totalAnaerobicTrainingEffect",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          139: {
+            num: 139,
+            name: "avgVam",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          140: {
+            num: 140,
+            // 0 if above water
+            name: "avgDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          141: {
+            num: 141,
+            // 0 if above water
+            name: "maxDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          142: {
+            num: 142,
+            // Time since end of last dive
+            name: "surfaceInterval",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          143: {
+            num: 143,
+            name: "startCns",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          144: {
+            num: 144,
+            name: "endCns",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          145: {
+            num: 145,
+            name: "startN2",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          146: {
+            num: 146,
+            name: "endN2",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          147: {
+            num: 147,
+            name: "avgRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["169"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          148: {
+            num: 148,
+            name: "maxRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["170"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          149: {
+            num: 149,
+            name: "minRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["180"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          150: {
+            num: 150,
+            name: "minTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          155: {
+            num: 155,
+            name: "o2Toxicity",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "OTUs",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          156: {
+            num: 156,
+            name: "diveNumber",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          168: {
+            num: 168,
+            name: "trainingLoadPeak",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 65536,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          169: {
+            num: 169,
+            name: "enhancedAvgRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          170: {
+            num: 170,
+            name: "enhancedMaxRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          180: {
+            num: 180,
+            name: "enhancedMinRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          181: {
+            num: 181,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "totalGrit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kGrit",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          182: {
+            num: 182,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "totalFlow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Flow",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          183: {
+            num: 183,
+            name: "jumpCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          186: {
+            num: 186,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "avgGrit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kGrit",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          187: {
+            num: 187,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "avgFlow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Flow",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          192: {
+            num: 192,
+            // A 0-100 scale representing how a user felt while performing a workout. Low values are considered feeling bad, while high values are good.
+            name: "workoutFeel",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          193: {
+            num: 193,
+            // Common Borg CR10 / 0-10 RPE scale, multiplied 10x.. Aggregate score for all workouts in a single session.
+            name: "workoutRpe",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          194: {
+            num: 194,
+            // Average SPO2 for the monitoring session
+            name: "avgSpo2",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          195: {
+            num: 195,
+            // Average stress for the monitoring session
+            name: "avgStress",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          196: {
+            num: 196,
+            name: "metabolicCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          197: {
+            num: 197,
+            // Standard deviation of R-R interval (SDRR) - Heart rate variability measure most useful for wellness users.
+            name: "sdrrHrv",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mS",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          198: {
+            num: 198,
+            // Root mean square successive difference (RMSSD) - Heart rate variability measure most useful for athletes
+            name: "rmssdHrv",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mS",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          199: {
+            num: 199,
+            // fractional part of total_ascent
+            name: "totalFractionalAscent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          200: {
+            num: 200,
+            // fractional part of total_descent
+            name: "totalFractionalDescent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          208: {
+            num: 208,
+            name: "avgCoreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          209: {
+            num: 209,
+            name: "minCoreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          210: {
+            num: 210,
+            name: "maxCoreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      19: {
+        num: 19,
+        name: "lap",
+        messagesKey: "lapMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "event",
+            type: "event",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "eventType",
+            type: "eventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "startPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "startPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "endPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "endPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Time (includes pauses)
+            name: "totalElapsedTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Timer Time (excludes pauses)
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "totalDistance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "totalCycles",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "totalStrides",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "strides",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 1 },
+                  { name: "sport", value: 11 }
+                ]
+              },
+              {
+                name: "totalStrokes",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "strokes",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 2 },
+                  { name: "sport", value: 5 },
+                  { name: "sport", value: 15 },
+                  { name: "sport", value: 37 }
+                ]
+              }
+            ]
+          },
+          11: {
+            num: 11,
+            name: "totalCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // If New Leaf
+            name: "totalFatCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "avgSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1e3],
+            offset: [0],
+            units: ["m/s"],
+            bits: [16],
+            components: ["110"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "maxSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1e3],
+            offset: [0],
+            units: ["m/s"],
+            bits: [16],
+            components: ["111"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "avgHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            name: "maxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            // total_cycles / total_timer_time if non_zero_avg_cadence otherwise total_cycles / total_elapsed_time
+            name: "avgCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "avgRunningCadence",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "strides/min",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 1 }
+                ]
+              }
+            ]
+          },
+          18: {
+            num: 18,
+            name: "maxCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "maxRunningCadence",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "strides/min",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 1 }
+                ]
+              }
+            ]
+          },
+          19: {
+            num: 19,
+            // total_power / total_timer_time if non_zero_avg_power otherwise total_power / total_elapsed_time
+            name: "avgPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            name: "maxPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "totalAscent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "totalDescent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "intensity",
+            type: "intensity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            name: "lapTrigger",
+            type: "lapTrigger",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          26: {
+            num: 26,
+            name: "eventGroup",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            // # of lengths of swim pool
+            name: "numLengths",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "lengths",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          33: {
+            num: 33,
+            name: "normalizedPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          34: {
+            num: 34,
+            name: "leftRightBalance",
+            type: "leftRightBalance100",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          35: {
+            num: 35,
+            name: "firstLengthIndex",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          37: {
+            num: 37,
+            name: "avgStrokeDistance",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          38: {
+            num: 38,
+            name: "swimStroke",
+            type: "swimStroke",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          39: {
+            num: 39,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          40: {
+            num: 40,
+            // # of active lengths of swim pool
+            name: "numActiveLengths",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "lengths",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          41: {
+            num: 41,
+            name: "totalWork",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "J",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          42: {
+            num: 42,
+            name: "avgAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["112"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          43: {
+            num: 43,
+            name: "maxAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["114"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          44: {
+            num: 44,
+            name: "gpsAccuracy",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          45: {
+            num: 45,
+            name: "avgGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          46: {
+            num: 46,
+            name: "avgPosGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          47: {
+            num: 47,
+            name: "avgNegGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          48: {
+            num: 48,
+            name: "maxPosGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          49: {
+            num: 49,
+            name: "maxNegGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          50: {
+            num: 50,
+            name: "avgTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          51: {
+            num: 51,
+            name: "maxTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          52: {
+            num: 52,
+            name: "totalMovingTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          53: {
+            num: 53,
+            name: "avgPosVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          54: {
+            num: 54,
+            name: "avgNegVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          55: {
+            num: 55,
+            name: "maxPosVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          56: {
+            num: 56,
+            name: "maxNegVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          57: {
+            num: 57,
+            name: "timeInHrZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          58: {
+            num: 58,
+            name: "timeInSpeedZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          59: {
+            num: 59,
+            name: "timeInCadenceZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          60: {
+            num: 60,
+            name: "timeInPowerZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          61: {
+            num: 61,
+            name: "repetitionNum",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          62: {
+            num: 62,
+            name: "minAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["113"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          63: {
+            num: 63,
+            name: "minHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          70: {
+            num: 70,
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          71: {
+            num: 71,
+            name: "wktStepIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          74: {
+            num: 74,
+            name: "opponentScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          75: {
+            num: 75,
+            // stroke_type enum used as the index
+            name: "strokeCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          76: {
+            num: 76,
+            // zone number used as the index
+            name: "zoneCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          77: {
+            num: 77,
+            name: "avgVerticalOscillation",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          78: {
+            num: 78,
+            name: "avgStanceTimePercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          79: {
+            num: 79,
+            name: "avgStanceTime",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          80: {
+            num: 80,
+            // fractional part of the avg_cadence
+            name: "avgFractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          81: {
+            num: 81,
+            // fractional part of the max_cadence
+            name: "maxFractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          82: {
+            num: 82,
+            // fractional part of the total_cycles
+            name: "totalFractionalCycles",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          83: {
+            num: 83,
+            name: "playerScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          84: {
+            num: 84,
+            // Avg saturated and unsaturated hemoglobin
+            name: "avgTotalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          85: {
+            num: 85,
+            // Min saturated and unsaturated hemoglobin
+            name: "minTotalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          86: {
+            num: 86,
+            // Max saturated and unsaturated hemoglobin
+            name: "maxTotalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          87: {
+            num: 87,
+            // Avg percentage of hemoglobin saturated with oxygen
+            name: "avgSaturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          88: {
+            num: 88,
+            // Min percentage of hemoglobin saturated with oxygen
+            name: "minSaturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          89: {
+            num: 89,
+            // Max percentage of hemoglobin saturated with oxygen
+            name: "maxSaturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          91: {
+            num: 91,
+            name: "avgLeftTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          92: {
+            num: 92,
+            name: "avgRightTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          93: {
+            num: 93,
+            name: "avgLeftPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          94: {
+            num: 94,
+            name: "avgRightPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          95: {
+            num: 95,
+            name: "avgCombinedPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          98: {
+            num: 98,
+            // Total time spent in the standing position
+            name: "timeStanding",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          99: {
+            num: 99,
+            // Number of transitions to the standing state
+            name: "standCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          100: {
+            num: 100,
+            // Average left platform center offset
+            name: "avgLeftPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          101: {
+            num: 101,
+            // Average right platform center offset
+            name: "avgRightPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          102: {
+            num: 102,
+            // Average left power phase angles. Data value indexes defined by power_phase_type.
+            name: "avgLeftPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          103: {
+            num: 103,
+            // Average left power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "avgLeftPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          104: {
+            num: 104,
+            // Average right power phase angles. Data value indexes defined by power_phase_type.
+            name: "avgRightPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          105: {
+            num: 105,
+            // Average right power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "avgRightPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          106: {
+            num: 106,
+            // Average power by position. Data value indexes defined by rider_position_type.
+            name: "avgPowerPosition",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          107: {
+            num: 107,
+            // Maximum power by position. Data value indexes defined by rider_position_type.
+            name: "maxPowerPosition",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          108: {
+            num: 108,
+            // Average cadence by position. Data value indexes defined by rider_position_type.
+            name: "avgCadencePosition",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          109: {
+            num: 109,
+            // Maximum cadence by position. Data value indexes defined by rider_position_type.
+            name: "maxCadencePosition",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          110: {
+            num: 110,
+            name: "enhancedAvgSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          111: {
+            num: 111,
+            name: "enhancedMaxSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          112: {
+            num: 112,
+            name: "enhancedAvgAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          113: {
+            num: 113,
+            name: "enhancedMinAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          114: {
+            num: 114,
+            name: "enhancedMaxAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          115: {
+            num: 115,
+            // lev average motor power during lap
+            name: "avgLevMotorPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          116: {
+            num: 116,
+            // lev maximum motor power during lap
+            name: "maxLevMotorPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          117: {
+            num: 117,
+            // lev battery consumption during lap
+            name: "levBatteryConsumption",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          118: {
+            num: 118,
+            name: "avgVerticalRatio",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          119: {
+            num: 119,
+            name: "avgStanceTimeBalance",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          120: {
+            num: 120,
+            name: "avgStepLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          121: {
+            num: 121,
+            name: "avgVam",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          122: {
+            num: 122,
+            // 0 if above water
+            name: "avgDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          123: {
+            num: 123,
+            // 0 if above water
+            name: "maxDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          124: {
+            num: 124,
+            name: "minTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          136: {
+            num: 136,
+            name: "enhancedAvgRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          137: {
+            num: 137,
+            name: "enhancedMaxRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          147: {
+            num: 147,
+            name: "avgRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["136"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          148: {
+            num: 148,
+            name: "maxRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["137"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          149: {
+            num: 149,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "totalGrit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kGrit",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          150: {
+            num: 150,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "totalFlow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Flow",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          151: {
+            num: 151,
+            name: "jumpCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          153: {
+            num: 153,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "avgGrit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kGrit",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          154: {
+            num: 154,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "avgFlow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Flow",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          156: {
+            num: 156,
+            // fractional part of total_ascent
+            name: "totalFractionalAscent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          157: {
+            num: 157,
+            // fractional part of total_descent
+            name: "totalFractionalDescent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          158: {
+            num: 158,
+            name: "avgCoreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          159: {
+            num: 159,
+            name: "minCoreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          160: {
+            num: 160,
+            name: "maxCoreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      101: {
+        num: 101,
+        name: "length",
+        messagesKey: "lengthMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "event",
+            type: "event",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "eventType",
+            type: "eventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "totalElapsedTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "totalStrokes",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "strokes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "avgSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "swimStroke",
+            type: "swimStroke",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "swim_stroke",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "avgSwimmingCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "strokes/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "eventGroup",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "totalCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "lengthType",
+            type: "lengthType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            name: "playerScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            name: "opponentScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            // stroke_type enum used as the index
+            name: "strokeCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            // zone number used as the index
+            name: "zoneCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "enhancedAvgRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "enhancedMaxRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            name: "avgRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["22"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            name: "maxRespirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [8],
+            components: ["23"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          }
+        }
+      },
+      20: {
+        num: 20,
+        name: "record",
+        messagesKey: "recordMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "positionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "positionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "altitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["78"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "heartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "cadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "distance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: true,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "speed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1e3],
+            offset: [0],
+            units: ["m/s"],
+            bits: [16],
+            components: ["73"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "power",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "compressedSpeedDistance",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: [100, 16],
+            offset: [0, 0],
+            units: ["m/s", "m"],
+            bits: [12, 12],
+            components: ["6", "5"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "grade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // Relative. 0 is none 254 is Max.
+            name: "resistance",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "timeFromCourse",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "cycleLength",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "temperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            // Speed at 1s intervals. Timestamp field indicates time of last array element.
+            name: "speed1s",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 16,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            name: "cycles",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: ["cycles"],
+            bits: [8],
+            components: ["19"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            name: "totalCycles",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: true,
+            hasComponents: false,
+            subFields: []
+          },
+          28: {
+            num: 28,
+            name: "compressedAccumulatedPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: ["watts"],
+            bits: [16],
+            components: ["29"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          29: {
+            num: 29,
+            name: "accumulatedPower",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: true,
+            hasComponents: false,
+            subFields: []
+          },
+          30: {
+            num: 30,
+            name: "leftRightBalance",
+            type: "leftRightBalance",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          31: {
+            num: 31,
+            name: "gpsAccuracy",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            name: "verticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          33: {
+            num: 33,
+            name: "calories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          39: {
+            num: 39,
+            name: "verticalOscillation",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          40: {
+            num: 40,
+            name: "stanceTimePercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          41: {
+            num: 41,
+            name: "stanceTime",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          42: {
+            num: 42,
+            name: "activityType",
+            type: "activityType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          43: {
+            num: 43,
+            name: "leftTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          44: {
+            num: 44,
+            name: "rightTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          45: {
+            num: 45,
+            name: "leftPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          46: {
+            num: 46,
+            name: "rightPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          47: {
+            num: 47,
+            name: "combinedPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          48: {
+            num: 48,
+            name: "time128",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          49: {
+            num: 49,
+            name: "strokeType",
+            type: "strokeType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          50: {
+            num: 50,
+            name: "zone",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          51: {
+            num: 51,
+            name: "ballSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          52: {
+            num: 52,
+            // Log cadence and fractional cadence for backwards compatability
+            name: "cadence256",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 256,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          53: {
+            num: 53,
+            name: "fractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          54: {
+            num: 54,
+            // Total saturated and unsaturated hemoglobin
+            name: "totalHemoglobinConc",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          55: {
+            num: 55,
+            // Min saturated and unsaturated hemoglobin
+            name: "totalHemoglobinConcMin",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          56: {
+            num: 56,
+            // Max saturated and unsaturated hemoglobin
+            name: "totalHemoglobinConcMax",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "g/dL",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          57: {
+            num: 57,
+            // Percentage of hemoglobin saturated with oxygen
+            name: "saturatedHemoglobinPercent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          58: {
+            num: 58,
+            // Min percentage of hemoglobin saturated with oxygen
+            name: "saturatedHemoglobinPercentMin",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          59: {
+            num: 59,
+            // Max percentage of hemoglobin saturated with oxygen
+            name: "saturatedHemoglobinPercentMax",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          62: {
+            num: 62,
+            name: "deviceIndex",
+            type: "deviceIndex",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          67: {
+            num: 67,
+            // Left platform center offset
+            name: "leftPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          68: {
+            num: 68,
+            // Right platform center offset
+            name: "rightPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          69: {
+            num: 69,
+            // Left power phase angles. Data value indexes defined by power_phase_type.
+            name: "leftPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          70: {
+            num: 70,
+            // Left power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "leftPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          71: {
+            num: 71,
+            // Right power phase angles. Data value indexes defined by power_phase_type.
+            name: "rightPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          72: {
+            num: 72,
+            // Right power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "rightPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          73: {
+            num: 73,
+            name: "enhancedSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          78: {
+            num: 78,
+            name: "enhancedAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          81: {
+            num: 81,
+            // lev battery state of charge
+            name: "batterySoc",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          82: {
+            num: 82,
+            // lev motor power
+            name: "motorPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          83: {
+            num: 83,
+            name: "verticalRatio",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          84: {
+            num: 84,
+            name: "stanceTimeBalance",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          85: {
+            num: 85,
+            name: "stepLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          87: {
+            num: 87,
+            // Supports larger cycle sizes needed for paddlesports. Max cycle size: 655.35
+            name: "cycleLength16",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          91: {
+            num: 91,
+            // Includes atmospheric pressure
+            name: "absolutePressure",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Pa",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          92: {
+            num: 92,
+            // 0 if above water
+            name: "depth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          93: {
+            num: 93,
+            // 0 if above water
+            name: "nextStopDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          94: {
+            num: 94,
+            name: "nextStopTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          95: {
+            num: 95,
+            name: "timeToSurface",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          96: {
+            num: 96,
+            name: "ndlTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          97: {
+            num: 97,
+            name: "cnsLoad",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          98: {
+            num: 98,
+            name: "n2Load",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          99: {
+            num: 99,
+            name: "respirationRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: ["s"],
+            bits: [8],
+            components: ["108"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          108: {
+            num: 108,
+            name: "enhancedRespirationRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "Breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          114: {
+            num: 114,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "grit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          115: {
+            num: 115,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "flow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          116: {
+            num: 116,
+            // Current Stress value
+            name: "currentStress",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          117: {
+            num: 117,
+            name: "ebikeTravelRange",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "km",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          118: {
+            num: 118,
+            name: "ebikeBatteryLevel",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          119: {
+            num: 119,
+            name: "ebikeAssistMode",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "depends on sensor",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          120: {
+            num: 120,
+            name: "ebikeAssistLevelPercent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          123: {
+            num: 123,
+            name: "airTimeRemaining",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          124: {
+            num: 124,
+            // Pressure-based surface air consumption
+            name: "pressureSac",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "bar/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          125: {
+            num: 125,
+            // Volumetric surface air consumption
+            name: "volumeSac",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "L/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          126: {
+            num: 126,
+            // Respiratory minute volume
+            name: "rmv",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "L/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          127: {
+            num: 127,
+            name: "ascentRate",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          129: {
+            num: 129,
+            // Current partial pressure of oxygen
+            name: "po2",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          139: {
+            num: 139,
+            name: "coreTemperature",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      21: {
+        num: 21,
+        name: "event",
+        messagesKey: "eventMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "event",
+            type: "event",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "eventType",
+            type: "eventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "data16",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1],
+            offset: [0],
+            units: [""],
+            bits: [16],
+            components: ["3"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "data",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "timerTrigger",
+                type: "timerTrigger",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 0 }
+                ]
+              },
+              {
+                name: "coursePointIndex",
+                type: "messageIndex",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 10 }
+                ]
+              },
+              {
+                name: "batteryLevel",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1e3,
+                offset: 0,
+                units: "V",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 11 }
+                ]
+              },
+              {
+                name: "virtualPartnerSpeed",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 12 }
+                ]
+              },
+              {
+                name: "hrHighAlert",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 13 }
+                ]
+              },
+              {
+                name: "hrLowAlert",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 14 }
+                ]
+              },
+              {
+                name: "speedHighAlert",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 15 }
+                ]
+              },
+              {
+                name: "speedLowAlert",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 16 }
+                ]
+              },
+              {
+                name: "cadHighAlert",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "rpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 17 }
+                ]
+              },
+              {
+                name: "cadLowAlert",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "rpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 18 }
+                ]
+              },
+              {
+                name: "powerHighAlert",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 19 }
+                ]
+              },
+              {
+                name: "powerLowAlert",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 20 }
+                ]
+              },
+              {
+                name: "timeDurationAlert",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 23 }
+                ]
+              },
+              {
+                name: "distanceDurationAlert",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 100,
+                offset: 0,
+                units: "m",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 24 }
+                ]
+              },
+              {
+                name: "calorieDurationAlert",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "calories",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 25 }
+                ]
+              },
+              {
+                name: "fitnessEquipmentState",
+                type: "fitnessEquipmentState",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 27 }
+                ]
+              },
+              {
+                name: "sportPoint",
+                type: "uint32",
+                baseType: "uint32",
+                scale: [1, 1],
+                offset: [0, 0],
+                units: ["", ""],
+                bits: [16, 16],
+                components: ["7", "8"],
+                hasComponents: true,
+                map: [
+                  { name: "event", value: 33 }
+                ]
+              },
+              {
+                name: "gearChangeData",
+                type: "uint32",
+                baseType: "uint32",
+                scale: [1, 1, 1, 1],
+                offset: [0, 0, 0, 0],
+                units: ["", "", "", ""],
+                bits: [8, 8, 8, 8],
+                components: ["11", "12", "9", "10"],
+                hasComponents: true,
+                map: [
+                  { name: "event", value: 42 },
+                  { name: "event", value: 43 }
+                ]
+              },
+              {
+                name: "riderPosition",
+                // Indicates the rider position value.
+                type: "riderPositionType",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 44 }
+                ]
+              },
+              {
+                name: "commTimeout",
+                type: "commTimeoutType",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 47 }
+                ]
+              },
+              {
+                name: "diveAlert",
+                type: "diveAlert",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 56 }
+                ]
+              },
+              {
+                name: "autoActivityDetectDuration",
+                type: "uint16",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "min",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 54 }
+                ]
+              },
+              {
+                name: "radarThreatAlert",
+                // The first byte is the radar_threat_level_max, the second byte is the radar_threat_count, third bytes is the average approach speed, and the 4th byte is the max approach speed
+                type: "uint32",
+                baseType: "uint32",
+                scale: [1, 1, 10, 10],
+                offset: [0, 0, 0, 0],
+                units: ["", "", "", ""],
+                bits: [8, 8, 8, 8],
+                components: ["21", "22", "23", "24"],
+                hasComponents: true,
+                map: [
+                  { name: "event", value: 75 }
+                ]
+              }
+            ]
+          },
+          4: {
+            num: 4,
+            name: "eventGroup",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Do not populate directly. Autogenerated by decoder for sport_point subfield components
+            name: "score",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Do not populate directly. Autogenerated by decoder for sport_point subfield components
+            name: "opponentScore",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Do not populate directly. Autogenerated by decoder for gear_change subfield components. Front gear number. 1 is innermost.
+            name: "frontGearNum",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // Do not populate directly. Autogenerated by decoder for gear_change subfield components. Number of front teeth.
+            name: "frontGear",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            // Do not populate directly. Autogenerated by decoder for gear_change subfield components. Rear gear number. 1 is innermost.
+            name: "rearGearNum",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // Do not populate directly. Autogenerated by decoder for gear_change subfield components. Number of rear teeth.
+            name: "rearGear",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "deviceIndex",
+            type: "deviceIndex",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            // Activity Type associated with an auto_activity_detect event
+            name: "activityType",
+            type: "activityType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            // Timestamp of when the event started
+            name: "startTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "autoActivityDetectStartTimestamp",
+                // Auto Activity Detect Start Timestamp.
+                type: "dateTime",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "event", value: 54 }
+                ]
+              }
+            ]
+          },
+          21: {
+            num: 21,
+            // Do not populate directly. Autogenerated by decoder for threat_alert subfield components.
+            name: "radarThreatLevelMax",
+            type: "radarThreatLevelType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            // Do not populate directly. Autogenerated by decoder for threat_alert subfield components.
+            name: "radarThreatCount",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            // Do not populate directly. Autogenerated by decoder for radar_threat_alert subfield components
+            name: "radarThreatAvgApproachSpeed",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            // Do not populate directly. Autogenerated by decoder for radar_threat_alert subfield components
+            name: "radarThreatMaxApproachSpeed",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      23: {
+        num: 23,
+        name: "deviceInfo",
+        messagesKey: "deviceInfoMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "deviceIndex",
+            type: "deviceIndex",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "deviceType",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "bleDeviceType",
+                type: "bleDeviceType",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sourceType", value: 3 }
+                ]
+              },
+              {
+                name: "antplusDeviceType",
+                type: "antplusDeviceType",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sourceType", value: 1 }
+                ]
+              },
+              {
+                name: "antDeviceType",
+                type: "uint8",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sourceType", value: 0 }
+                ]
+              },
+              {
+                name: "localDeviceType",
+                type: "localDeviceType",
+                baseType: "uint8",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sourceType", value: 5 }
+                ]
+              }
+            ]
+          },
+          2: {
+            num: 2,
+            name: "manufacturer",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "serialNumber",
+            type: "uint32z",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "product",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "faveroProduct",
+                type: "faveroProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 263 }
+                ]
+              },
+              {
+                name: "garminProduct",
+                type: "garminProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 1 },
+                  { name: "manufacturer", value: 15 },
+                  { name: "manufacturer", value: 13 },
+                  { name: "manufacturer", value: 89 }
+                ]
+              }
+            ]
+          },
+          5: {
+            num: 5,
+            name: "softwareVersion",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "hardwareVersion",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Reset by new battery or charge.
+            name: "cumOperatingTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "batteryVoltage",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 256,
+            offset: 0,
+            units: "V",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "batteryStatus",
+            type: "batteryStatus",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            // Indicates the location of the sensor
+            name: "sensorPosition",
+            type: "bodyLocation",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            // Used to describe the sensor or location
+            name: "descriptor",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            name: "antTransmissionType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "antDeviceNumber",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "antNetwork",
+            type: "antNetwork",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            name: "sourceType",
+            type: "sourceType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          27: {
+            num: 27,
+            // Optional free form string to indicate the devices name or model
+            name: "productName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            name: "batteryLevel",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      375: {
+        num: 375,
+        name: "deviceAuxBatteryInfo",
+        messagesKey: "deviceAuxBatteryInfoMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "deviceIndex",
+            type: "deviceIndex",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "batteryVoltage",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 256,
+            offset: 0,
+            units: "V",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "batteryStatus",
+            type: "batteryStatus",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "batteryIdentifier",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      72: {
+        num: 72,
+        // Corresponds to file_id of workout or course.
+        name: "trainingFile",
+        messagesKey: "trainingFileMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "type",
+            type: "file",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "manufacturer",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "product",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "faveroProduct",
+                type: "faveroProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 263 }
+                ]
+              },
+              {
+                name: "garminProduct",
+                type: "garminProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 1 },
+                  { name: "manufacturer", value: 15 },
+                  { name: "manufacturer", value: 13 },
+                  { name: "manufacturer", value: 89 }
+                ]
+              }
+            ]
+          },
+          3: {
+            num: 3,
+            name: "serialNumber",
+            type: "uint32z",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "timeCreated",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      128: {
+        num: 128,
+        name: "weatherConditions",
+        messagesKey: "weatherConditionsMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // time of update for current conditions, else forecast time
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Current or forecast
+            name: "weatherReport",
+            type: "weatherReport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "temperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Corresponds to GSC Response weatherIcon field
+            name: "condition",
+            type: "weatherStatus",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "windDirection",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "windSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // range 0-100
+            name: "precipitationProbability",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Heat Index if GCS heatIdx above or equal to 90F or wind chill if GCS windChill below or equal to 32F
+            name: "temperatureFeelsLike",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "relativeHumidity",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // string corresponding to GCS response location string
+            name: "location",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "observedAtTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "observedLocationLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "observedLocationLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "dayOfWeek",
+            type: "dayOfWeek",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "highTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "lowTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      129: {
+        num: 129,
+        name: "weatherAlert",
+        messagesKey: "weatherAlertMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Unique identifier from GCS report ID string, length is 12
+            name: "reportId",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Time alert was issued
+            name: "issueTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Time alert expires
+            name: "expireTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Warning, Watch, Advisory, Statement
+            name: "severity",
+            type: "weatherSeverity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Tornado, Severe Thunderstorm, etc.
+            name: "type",
+            type: "weatherSevereType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      160: {
+        num: 160,
+        name: "gpsMetadata",
+        messagesKey: "gpsMetadataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp.
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "positionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "positionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "enhancedAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "enhancedSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "heading",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Used to correlate UTC to system time if the timestamp of the message is in system time. This UTC time is derived from the GPS data.
+            name: "utcTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // velocity[0] is lon velocity. Velocity[1] is lat velocity. Velocity[2] is altitude velocity.
+            name: "velocity",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      161: {
+        num: 161,
+        name: "cameraEvent",
+        messagesKey: "cameraEventMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp.
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "cameraEventType",
+            type: "cameraEventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "cameraFileUuid",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "cameraOrientation",
+            type: "cameraOrientationType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      164: {
+        num: 164,
+        name: "gyroscopeData",
+        messagesKey: "gyroscopeDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Each time in the array describes the time at which the gyro sample with the corrosponding index was taken. Limited to 30 samples in each message. The samples may span across seconds. Array size must match the number of samples in gyro_x and gyro_y and gyro_z
+            name: "sampleTimeOffset",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "gyroX",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "gyroY",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "gyroZ",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Calibrated gyro reading
+            name: "calibratedGyroX",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "deg/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Calibrated gyro reading
+            name: "calibratedGyroY",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "deg/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Calibrated gyro reading
+            name: "calibratedGyroZ",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "deg/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      165: {
+        num: 165,
+        name: "accelerometerData",
+        messagesKey: "accelerometerDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Each time in the array describes the time at which the accelerometer sample with the corrosponding index was taken. Limited to 30 samples in each message. The samples may span across seconds. Array size must match the number of samples in accel_x and accel_y and accel_z
+            name: "sampleTimeOffset",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "accelX",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "accelY",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "accelZ",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Calibrated accel reading
+            name: "calibratedAccelX",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "g",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Calibrated accel reading
+            name: "calibratedAccelY",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "g",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Calibrated accel reading
+            name: "calibratedAccelZ",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "g",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Calibrated accel reading
+            name: "compressedCalibratedAccelX",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "mG",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Calibrated accel reading
+            name: "compressedCalibratedAccelY",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "mG",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // Calibrated accel reading
+            name: "compressedCalibratedAccelZ",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "mG",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      208: {
+        num: 208,
+        name: "magnetometerData",
+        messagesKey: "magnetometerDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Each time in the array describes the time at which the compass sample with the corrosponding index was taken. Limited to 30 samples in each message. The samples may span across seconds. Array size must match the number of samples in cmps_x and cmps_y and cmps_z
+            name: "sampleTimeOffset",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "magX",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "magY",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // These are the raw ADC reading. Maximum number of samples is 30 in each message. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "magZ",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Calibrated Magnetometer reading
+            name: "calibratedMagX",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "G",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Calibrated Magnetometer reading
+            name: "calibratedMagY",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "G",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Calibrated Magnetometer reading
+            name: "calibratedMagZ",
+            type: "float32",
+            baseType: "float32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "G",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      209: {
+        num: 209,
+        name: "barometerData",
+        messagesKey: "barometerDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Each time in the array describes the time at which the barometer sample with the corrosponding index was taken. The samples may span across seconds. Array size must match the number of samples in baro_cal
+            name: "sampleTimeOffset",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // These are the raw ADC reading. The samples may span across seconds. A conversion will need to be done on this data once read.
+            name: "baroPres",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "Pa",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      167: {
+        num: 167,
+        name: "threeDSensorCalibration",
+        messagesKey: "threeDSensorCalibrationMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Indicates which sensor the calibration is for
+            name: "sensorType",
+            type: "sensorType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Calibration factor used to convert from raw ADC value to degrees, g, etc.
+            name: "calibrationFactor",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "accelCalFactor",
+                // Accelerometer calibration factor
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "g",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sensorType", value: 0 }
+                ]
+              },
+              {
+                name: "gyroCalFactor",
+                // Gyro calibration factor
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "deg/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sensorType", value: 1 }
+                ]
+              }
+            ]
+          },
+          2: {
+            num: 2,
+            // Calibration factor divisor
+            name: "calibrationDivisor",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Level shift value used to shift the ADC value back into range
+            name: "levelShift",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Internal calibration factors, one for each: xy, yx, zx
+            name: "offsetCal",
+            type: "sint32",
+            baseType: "sint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // 3 x 3 rotation matrix (row major)
+            name: "orientationMatrix",
+            type: "sint32",
+            baseType: "sint32",
+            array: true,
+            scale: 65535,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      210: {
+        num: 210,
+        name: "oneDSensorCalibration",
+        messagesKey: "oneDSensorCalibrationMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Indicates which sensor the calibration is for
+            name: "sensorType",
+            type: "sensorType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Calibration factor used to convert from raw ADC value to degrees, g, etc.
+            name: "calibrationFactor",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "baroCalFactor",
+                // Barometer calibration factor
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "Pa",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sensorType", value: 3 }
+                ]
+              }
+            ]
+          },
+          2: {
+            num: 2,
+            // Calibration factor divisor
+            name: "calibrationDivisor",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "counts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Level shift value used to shift the ADC value back into range
+            name: "levelShift",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Internal Calibration factor
+            name: "offsetCal",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      169: {
+        num: 169,
+        name: "videoFrame",
+        messagesKey: "videoFrameMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Whole second part of the timestamp
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond part of the timestamp.
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Number of the frame that the timestamp and timestamp_ms correlate to
+            name: "frameNumber",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      174: {
+        num: 174,
+        name: "obdiiData",
+        messagesKey: "obdiiDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Timestamp message was output
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Fractional part of timestamp, added to timestamp
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Offset of PID reading [i] from start_timestamp+start_timestamp_ms. Readings may span accross seconds.
+            name: "timeOffset",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Parameter ID
+            name: "pid",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Raw parameter data
+            name: "rawData",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Optional, data size of PID[i]. If not specified refer to SAE J1979.
+            name: "pidDataSize",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // System time associated with sample expressed in ms, can be used instead of time_offset. There will be a system_time value for each raw_data element. For multibyte pids the system_time is repeated.
+            name: "systemTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Timestamp of first sample recorded in the message. Used with time_offset to generate time of each sample
+            name: "startTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Fractional part of start_timestamp
+            name: "startTimestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      177: {
+        num: 177,
+        name: "nmeaSentence",
+        messagesKey: "nmeaSentenceMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Timestamp message was output
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Fractional part of timestamp, added to timestamp
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // NMEA sentence
+            name: "sentence",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      178: {
+        num: 178,
+        name: "aviationAttitude",
+        messagesKey: "aviationAttitudeMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Timestamp message was output
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Fractional part of timestamp, added to timestamp
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // System time associated with sample expressed in ms.
+            name: "systemTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Range -PI/2 to +PI/2
+            name: "pitch",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 10430.38,
+            offset: 0,
+            units: "radians",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Range -PI to +PI
+            name: "roll",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 10430.38,
+            offset: 0,
+            units: "radians",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Range -78.4 to +78.4 (-8 Gs to 8 Gs)
+            name: "accelLateral",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "m/s^2",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Range -78.4 to +78.4 (-8 Gs to 8 Gs)
+            name: "accelNormal",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "m/s^2",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Range -8.727 to +8.727 (-500 degs/sec to +500 degs/sec)
+            name: "turnRate",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1024,
+            offset: 0,
+            units: "radians/second",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "stage",
+            type: "attitudeStage",
+            baseType: "enum",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // The percent complete of the current attitude stage. Set to 0 for attitude stages 0, 1 and 2 and to 100 for attitude stage 3 by AHRS modules that do not support it. Range - 100
+            name: "attitudeStageComplete",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Track Angle/Heading Range 0 - 2pi
+            name: "track",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 10430.38,
+            offset: 0,
+            units: "radians",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "validity",
+            type: "attitudeValidity",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      184: {
+        num: 184,
+        name: "video",
+        messagesKey: "videoMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "url",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "hostingProvider",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Playback time of video
+            name: "duration",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      185: {
+        num: 185,
+        name: "videoTitle",
+        messagesKey: "videoTitleMesgs",
+        fields: {
+          254: {
+            num: 254,
+            // Long titles will be split into multiple parts
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Total number of title parts
+            name: "messageCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "text",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      186: {
+        num: 186,
+        name: "videoDescription",
+        messagesKey: "videoDescriptionMesgs",
+        fields: {
+          254: {
+            num: 254,
+            // Long descriptions will be split into multiple parts
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Total number of description parts
+            name: "messageCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "text",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      187: {
+        num: 187,
+        name: "videoClip",
+        messagesKey: "videoClipMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "clipNumber",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "startTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "startTimestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "endTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "endTimestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Start of clip in video time
+            name: "clipStart",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // End of clip in video time
+            name: "clipEnd",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      225: {
+        num: 225,
+        name: "set",
+        messagesKey: "setMesgs",
+        fields: {
+          254: {
+            num: 254,
+            // Timestamp of the set
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "duration",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // # of repitions of the movement
+            name: "repetitions",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Amount of weight applied for the set
+            name: "weight",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 16,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "setType",
+            type: "setType",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Start time of the set
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "category",
+            type: "exerciseCategory",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Based on the associated category, see [category]_exercise_names
+            name: "categorySubtype",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "weightDisplayUnit",
+            type: "fitBaseUnit",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "wktStepIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      285: {
+        num: 285,
+        name: "jump",
+        messagesKey: "jumpMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "distance",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "height",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "rotations",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "hangTime",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // A score for a jump calculated based on hang time, rotations, and distance.
+            name: "score",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "positionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "positionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "speed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [1e3],
+            offset: [0],
+            units: ["m/s"],
+            bits: [16],
+            components: ["8"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "enhancedSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      312: {
+        num: 312,
+        name: "split",
+        messagesKey: "splitMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "splitType",
+            type: "splitType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "totalElapsedTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "totalDistance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "avgSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "totalAscent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "totalDescent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "startPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "startPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "endPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            name: "endPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            name: "maxSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          26: {
+            num: 26,
+            name: "avgVertSpeed",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          27: {
+            num: 27,
+            name: "endTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          28: {
+            num: 28,
+            name: "totalCalories",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          74: {
+            num: 74,
+            name: "startElevation",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          78: {
+            num: 78,
+            // Active time of split rounds
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          110: {
+            num: 110,
+            name: "totalMovingTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      313: {
+        num: 313,
+        name: "splitSummary",
+        messagesKey: "splitSummaryMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "splitType",
+            type: "splitType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "numSplits",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "totalDistance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "avgSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "maxSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "totalAscent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "totalDescent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "avgHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "maxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "avgVertSpeed",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "totalCalories",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          65: {
+            num: 65,
+            // total active time in all split rounds
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          77: {
+            num: 77,
+            name: "totalMovingTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      317: {
+        num: 317,
+        name: "climbPro",
+        messagesKey: "climbProMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "positionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "positionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "climbProEvent",
+            type: "climbProEvent",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "climbNumber",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "climbCategory",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "currentDist",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      206: {
+        num: 206,
+        // Must be logged before developer field is used
+        name: "fieldDescription",
+        messagesKey: "fieldDescriptionMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "developerDataIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "fieldDefinitionNumber",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "fitBaseTypeId",
+            type: "fitBaseType",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "fieldName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "array",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "components",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "scale",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "offset",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "units",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "bits",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "accumulate",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "fitBaseUnitId",
+            type: "fitBaseUnit",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "nativeMesgNum",
+            type: "mesgNum",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "nativeFieldNum",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      207: {
+        num: 207,
+        // Must be logged before field description
+        name: "developerDataId",
+        messagesKey: "developerDataIdMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "developerId",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "applicationId",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "manufacturerId",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "developerDataIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "applicationVersion",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      31: {
+        num: 31,
+        name: "course",
+        messagesKey: "courseMesgs",
+        fields: {
+          4: {
+            num: 4,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "capabilities",
+            type: "courseCapabilities",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      32: {
+        num: 32,
+        name: "coursePoint",
+        messagesKey: "coursePointMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "positionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "positionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "distance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "type",
+            type: "coursePoint",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "favorite",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      148: {
+        num: 148,
+        // Unique Identification data for a segment file
+        name: "segmentId",
+        messagesKey: "segmentIdMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Friendly name assigned to segment
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // UUID of the segment
+            name: "uuid",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Sport associated with the segment
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Segment enabled for evaluation
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Primary key of the user that created the segment
+            name: "userProfilePrimaryKey",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // ID of the device that created the segment
+            name: "deviceId",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Index for the Leader Board entry selected as the default race participant
+            name: "defaultRaceLeader",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Indicates if any segments should be deleted
+            name: "deleteStatus",
+            type: "segmentDeleteStatus",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Indicates how the segment was selected to be sent to the device
+            name: "selectionType",
+            type: "segmentSelectionType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      149: {
+        num: 149,
+        // Unique Identification data for an individual segment leader within a segment file
+        name: "segmentLeaderboardEntry",
+        messagesKey: "segmentLeaderboardEntryMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Friendly name assigned to leader
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Leader classification
+            name: "type",
+            type: "segmentLeaderboardType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Primary user ID of this leader
+            name: "groupPrimaryKey",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // ID of the activity associated with this leader time
+            name: "activityId",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Segment Time (includes pauses)
+            name: "segmentTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // String version of the activity_id. 21 characters long, express in decimal
+            name: "activityIdString",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      150: {
+        num: 150,
+        // Navigation and race evaluation point for a segment decribing a point along the segment path and time it took each segment leader to reach that point
+        name: "segmentPoint",
+        messagesKey: "segmentPointMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "positionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "positionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Accumulated distance along the segment at the described point
+            name: "distance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Accumulated altitude along the segment at the described point
+            name: "altitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["6"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Accumualted time each leader board member required to reach the described point. This value is zero for all leader board members at the starting point of the segment.
+            name: "leaderTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Accumulated altitude along the segment at the described point
+            name: "enhancedAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      142: {
+        num: 142,
+        name: "segmentLap",
+        messagesKey: "segmentLapMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "event",
+            type: "event",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "eventType",
+            type: "eventType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "startPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "startPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "endPositionLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "endPositionLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Time (includes pauses)
+            name: "totalElapsedTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Timer Time (excludes pauses)
+            name: "totalTimerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "totalDistance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "totalCycles",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "totalStrokes",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "strokes",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "sport", value: 2 }
+                ]
+              }
+            ]
+          },
+          11: {
+            num: 11,
+            name: "totalCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // If New Leaf
+            name: "totalFatCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "avgSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "maxSpeed",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "avgHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            name: "maxHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            // total_cycles / total_timer_time if non_zero_avg_cadence otherwise total_cycles / total_elapsed_time
+            name: "avgCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          18: {
+            num: 18,
+            name: "maxCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            // total_power / total_timer_time if non_zero_avg_power otherwise total_power / total_elapsed_time
+            name: "avgPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            name: "maxPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          21: {
+            num: 21,
+            name: "totalAscent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            name: "totalDescent",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            name: "eventGroup",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            // North east corner latitude.
+            name: "necLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          26: {
+            num: 26,
+            // North east corner longitude.
+            name: "necLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          27: {
+            num: 27,
+            // South west corner latitude.
+            name: "swcLat",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          28: {
+            num: 28,
+            // South west corner latitude.
+            name: "swcLong",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "semicircles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          29: {
+            num: 29,
+            name: "name",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          30: {
+            num: 30,
+            name: "normalizedPower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          31: {
+            num: 31,
+            name: "leftRightBalance",
+            type: "leftRightBalance100",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          33: {
+            num: 33,
+            name: "totalWork",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "J",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          34: {
+            num: 34,
+            name: "avgAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["91"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          35: {
+            num: 35,
+            name: "maxAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["92"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          36: {
+            num: 36,
+            name: "gpsAccuracy",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          37: {
+            num: 37,
+            name: "avgGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          38: {
+            num: 38,
+            name: "avgPosGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          39: {
+            num: 39,
+            name: "avgNegGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          40: {
+            num: 40,
+            name: "maxPosGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          41: {
+            num: 41,
+            name: "maxNegGrade",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          42: {
+            num: 42,
+            name: "avgTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          43: {
+            num: 43,
+            name: "maxTemperature",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          44: {
+            num: 44,
+            name: "totalMovingTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          45: {
+            num: 45,
+            name: "avgPosVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          46: {
+            num: 46,
+            name: "avgNegVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          47: {
+            num: 47,
+            name: "maxPosVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          48: {
+            num: 48,
+            name: "maxNegVerticalSpeed",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          49: {
+            num: 49,
+            name: "timeInHrZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          50: {
+            num: 50,
+            name: "timeInSpeedZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          51: {
+            num: 51,
+            name: "timeInCadenceZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          52: {
+            num: 52,
+            name: "timeInPowerZone",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          53: {
+            num: 53,
+            name: "repetitionNum",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          54: {
+            num: 54,
+            name: "minAltitude",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: [5],
+            offset: [500],
+            units: ["m"],
+            bits: [16],
+            components: ["93"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          55: {
+            num: 55,
+            name: "minHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          56: {
+            num: 56,
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          57: {
+            num: 57,
+            name: "wktStepIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          58: {
+            num: 58,
+            name: "sportEvent",
+            type: "sportEvent",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          59: {
+            num: 59,
+            name: "avgLeftTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          60: {
+            num: 60,
+            name: "avgRightTorqueEffectiveness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          61: {
+            num: 61,
+            name: "avgLeftPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          62: {
+            num: 62,
+            name: "avgRightPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          63: {
+            num: 63,
+            name: "avgCombinedPedalSmoothness",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          64: {
+            num: 64,
+            name: "status",
+            type: "segmentLapStatus",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          65: {
+            num: 65,
+            name: "uuid",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          66: {
+            num: 66,
+            // fractional part of the avg_cadence
+            name: "avgFractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          67: {
+            num: 67,
+            // fractional part of the max_cadence
+            name: "maxFractionalCadence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          68: {
+            num: 68,
+            // fractional part of the total_cycles
+            name: "totalFractionalCycles",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          69: {
+            num: 69,
+            name: "frontGearShiftCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          70: {
+            num: 70,
+            name: "rearGearShiftCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          71: {
+            num: 71,
+            // Total time spent in the standing position
+            name: "timeStanding",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          72: {
+            num: 72,
+            // Number of transitions to the standing state
+            name: "standCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          73: {
+            num: 73,
+            // Average left platform center offset
+            name: "avgLeftPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          74: {
+            num: 74,
+            // Average right platform center offset
+            name: "avgRightPco",
+            type: "sint8",
+            baseType: "sint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          75: {
+            num: 75,
+            // Average left power phase angles. Data value indexes defined by power_phase_type.
+            name: "avgLeftPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          76: {
+            num: 76,
+            // Average left power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "avgLeftPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          77: {
+            num: 77,
+            // Average right power phase angles. Data value indexes defined by power_phase_type.
+            name: "avgRightPowerPhase",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          78: {
+            num: 78,
+            // Average right power phase peak angles. Data value indexes defined by power_phase_type.
+            name: "avgRightPowerPhasePeak",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 0.7111111,
+            offset: 0,
+            units: "degrees",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          79: {
+            num: 79,
+            // Average power by position. Data value indexes defined by rider_position_type.
+            name: "avgPowerPosition",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          80: {
+            num: 80,
+            // Maximum power by position. Data value indexes defined by rider_position_type.
+            name: "maxPowerPosition",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "watts",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          81: {
+            num: 81,
+            // Average cadence by position. Data value indexes defined by rider_position_type.
+            name: "avgCadencePosition",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          82: {
+            num: 82,
+            // Maximum cadence by position. Data value indexes defined by rider_position_type.
+            name: "maxCadencePosition",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "rpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          83: {
+            num: 83,
+            // Manufacturer that produced the segment
+            name: "manufacturer",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          84: {
+            num: 84,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "totalGrit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kGrit",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          85: {
+            num: 85,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "totalFlow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Flow",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          86: {
+            num: 86,
+            // The grit score estimates how challenging a route could be for a cyclist in terms of time spent going over sharp turns or large grade slopes.
+            name: "avgGrit",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kGrit",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          87: {
+            num: 87,
+            // The flow score estimates how long distance wise a cyclist deaccelerates over intervals where deacceleration is unnecessary such as smooth turns or small grade angle intervals.
+            name: "avgFlow",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "Flow",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          89: {
+            num: 89,
+            // fractional part of total_ascent
+            name: "totalFractionalAscent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          90: {
+            num: 90,
+            // fractional part of total_descent
+            name: "totalFractionalDescent",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          91: {
+            num: 91,
+            name: "enhancedAvgAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          92: {
+            num: 92,
+            name: "enhancedMaxAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          93: {
+            num: 93,
+            name: "enhancedMinAltitude",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 5,
+            offset: 500,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      151: {
+        num: 151,
+        // Summary of the unique segment and leaderboard information associated with a segment file. This message is used to compile a segment list file describing all segment files on a device. The segment list file is used when refreshing the contents of a segment file with the latest available leaderboard information.
+        name: "segmentFile",
+        messagesKey: "segmentFileMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // UUID of the segment file
+            name: "fileUuid",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Enabled state of the segment file
+            name: "enabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Primary key of the user that created the segment file
+            name: "userProfilePrimaryKey",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Leader type of each leader in the segment file
+            name: "leaderType",
+            type: "segmentLeaderboardType",
+            baseType: "enum",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Group primary key of each leader in the segment file
+            name: "leaderGroupPrimaryKey",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Activity ID of each leader in the segment file
+            name: "leaderActivityId",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // String version of the activity ID of each leader in the segment file. 21 characters long for each ID, express in decimal
+            name: "leaderActivityIdString",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            // Index for the Leader Board entry selected as the default race participant
+            name: "defaultRaceLeader",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      26: {
+        num: 26,
+        name: "workout",
+        messagesKey: "workoutMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "capabilities",
+            type: "workoutCapabilities",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // number of valid steps
+            name: "numValidSteps",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "wktName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            name: "poolLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            name: "poolLengthUnit",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            // Description of the workout
+            name: "wktDescription",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      158: {
+        num: 158,
+        name: "workoutSession",
+        messagesKey: "workoutSessionMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "numValidSteps",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "firstStepIndex",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "poolLength",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "poolLengthUnit",
+            type: "displayMeasure",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      27: {
+        num: 27,
+        name: "workoutStep",
+        messagesKey: "workoutStepMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "wktStepName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "durationType",
+            type: "wktStepDuration",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "durationValue",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "durationTime",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 0 },
+                  { name: "durationType", value: 28 }
+                ]
+              },
+              {
+                name: "durationDistance",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 100,
+                offset: 0,
+                units: "m",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 1 }
+                ]
+              },
+              {
+                name: "durationHr",
+                type: "workoutHr",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 2 },
+                  { name: "durationType", value: 3 }
+                ]
+              },
+              {
+                name: "durationCalories",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "calories",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 4 }
+                ]
+              },
+              {
+                name: "durationStep",
+                // message_index of step to loop back to. Steps are assumed to be in the order by message_index. custom_name and intensity members are undefined for this duration type.
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 6 },
+                  { name: "durationType", value: 7 },
+                  { name: "durationType", value: 8 },
+                  { name: "durationType", value: 9 },
+                  { name: "durationType", value: 10 },
+                  { name: "durationType", value: 11 },
+                  { name: "durationType", value: 12 },
+                  { name: "durationType", value: 13 }
+                ]
+              },
+              {
+                name: "durationPower",
+                type: "workoutPower",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 14 },
+                  { name: "durationType", value: 15 }
+                ]
+              },
+              {
+                name: "durationReps",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 29 }
+                ]
+              }
+            ]
+          },
+          3: {
+            num: 3,
+            name: "targetType",
+            type: "wktStepTarget",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "targetValue",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "targetSpeedZone",
+                // speed zone (1-10);Custom =0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 0 }
+                ]
+              },
+              {
+                name: "targetHrZone",
+                // hr zone (1-5);Custom =0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 1 }
+                ]
+              },
+              {
+                name: "targetCadenceZone",
+                // Zone (1-?); Custom = 0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 3 }
+                ]
+              },
+              {
+                name: "targetPowerZone",
+                // Power Zone ( 1-7); Custom = 0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 4 }
+                ]
+              },
+              {
+                name: "repeatSteps",
+                // # of repetitions
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 6 }
+                ]
+              },
+              {
+                name: "repeatTime",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 7 }
+                ]
+              },
+              {
+                name: "repeatDistance",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 100,
+                offset: 0,
+                units: "m",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 8 }
+                ]
+              },
+              {
+                name: "repeatCalories",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "calories",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 9 }
+                ]
+              },
+              {
+                name: "repeatHr",
+                type: "workoutHr",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 10 },
+                  { name: "durationType", value: 11 }
+                ]
+              },
+              {
+                name: "repeatPower",
+                type: "workoutPower",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "durationType", value: 12 },
+                  { name: "durationType", value: 13 }
+                ]
+              },
+              {
+                name: "targetStrokeType",
+                type: "swimStroke",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 11 }
+                ]
+              }
+            ]
+          },
+          5: {
+            num: 5,
+            name: "customTargetValueLow",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "customTargetSpeedLow",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 0 }
+                ]
+              },
+              {
+                name: "customTargetHeartRateLow",
+                type: "workoutHr",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 1 }
+                ]
+              },
+              {
+                name: "customTargetCadenceLow",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "rpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 3 }
+                ]
+              },
+              {
+                name: "customTargetPowerLow",
+                type: "workoutPower",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 4 }
+                ]
+              }
+            ]
+          },
+          6: {
+            num: 6,
+            name: "customTargetValueHigh",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "customTargetSpeedHigh",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 0 }
+                ]
+              },
+              {
+                name: "customTargetHeartRateHigh",
+                type: "workoutHr",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 1 }
+                ]
+              },
+              {
+                name: "customTargetCadenceHigh",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "rpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 3 }
+                ]
+              },
+              {
+                name: "customTargetPowerHigh",
+                type: "workoutPower",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "targetType", value: 4 }
+                ]
+              }
+            ]
+          },
+          7: {
+            num: 7,
+            name: "intensity",
+            type: "intensity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "notes",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "equipment",
+            type: "workoutEquipment",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "exerciseCategory",
+            type: "exerciseCategory",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "exerciseName",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            name: "exerciseWeight",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "weightDisplayUnit",
+            type: "fitBaseUnit",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            name: "secondaryTargetType",
+            type: "wktStepTarget",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          20: {
+            num: 20,
+            name: "secondaryTargetValue",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "secondaryTargetSpeedZone",
+                // speed zone (1-10);Custom =0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 0 }
+                ]
+              },
+              {
+                name: "secondaryTargetHrZone",
+                // hr zone (1-5);Custom =0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 1 }
+                ]
+              },
+              {
+                name: "secondaryTargetCadenceZone",
+                // Zone (1-?); Custom = 0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 3 }
+                ]
+              },
+              {
+                name: "secondaryTargetPowerZone",
+                // Power Zone ( 1-7); Custom = 0;
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 4 }
+                ]
+              },
+              {
+                name: "secondaryTargetStrokeType",
+                type: "swimStroke",
+                baseType: "enum",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 11 }
+                ]
+              }
+            ]
+          },
+          21: {
+            num: 21,
+            name: "secondaryCustomTargetValueLow",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "secondaryCustomTargetSpeedLow",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 0 }
+                ]
+              },
+              {
+                name: "secondaryCustomTargetHeartRateLow",
+                type: "workoutHr",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 1 }
+                ]
+              },
+              {
+                name: "secondaryCustomTargetCadenceLow",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "rpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 3 }
+                ]
+              },
+              {
+                name: "secondaryCustomTargetPowerLow",
+                type: "workoutPower",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 4 }
+                ]
+              }
+            ]
+          },
+          22: {
+            num: 22,
+            name: "secondaryCustomTargetValueHigh",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "secondaryCustomTargetSpeedHigh",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1e3,
+                offset: 0,
+                units: "m/s",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 0 }
+                ]
+              },
+              {
+                name: "secondaryCustomTargetHeartRateHigh",
+                type: "workoutHr",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or bpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 1 }
+                ]
+              },
+              {
+                name: "secondaryCustomTargetCadenceHigh",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "rpm",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 3 }
+                ]
+              },
+              {
+                name: "secondaryCustomTargetPowerHigh",
+                type: "workoutPower",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "% or watts",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "secondaryTargetType", value: 4 }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      264: {
+        num: 264,
+        name: "exerciseTitle",
+        messagesKey: "exerciseTitleMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "exerciseCategory",
+            type: "exerciseCategory",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "exerciseName",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "wktStepName",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      28: {
+        num: 28,
+        name: "schedule",
+        messagesKey: "scheduleMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Corresponds to file_id of scheduled workout / course.
+            name: "manufacturer",
+            type: "manufacturer",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Corresponds to file_id of scheduled workout / course.
+            name: "product",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "faveroProduct",
+                type: "faveroProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 263 }
+                ]
+              },
+              {
+                name: "garminProduct",
+                type: "garminProduct",
+                baseType: "uint16",
+                scale: 1,
+                offset: 0,
+                units: "",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "manufacturer", value: 1 },
+                  { name: "manufacturer", value: 15 },
+                  { name: "manufacturer", value: 13 },
+                  { name: "manufacturer", value: 89 }
+                ]
+              }
+            ]
+          },
+          2: {
+            num: 2,
+            // Corresponds to file_id of scheduled workout / course.
+            name: "serialNumber",
+            type: "uint32z",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Corresponds to file_id of scheduled workout / course.
+            name: "timeCreated",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // TRUE if this activity has been started
+            name: "completed",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "type",
+            type: "schedule",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "scheduledTime",
+            type: "localDateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      33: {
+        num: 33,
+        name: "totals",
+        messagesKey: "totalsMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Excludes pauses
+            name: "timerTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "distance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "calories",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Includes pauses
+            name: "elapsedTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "sessions",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "sportIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      30: {
+        num: 30,
+        name: "weightScale",
+        messagesKey: "weightScaleMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "weight",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "percentFat",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "percentHydration",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "%",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "visceralFatMass",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "boneMass",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "muscleMass",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "kg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "basalMet",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 4,
+            offset: 0,
+            units: "kcal/day",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "physiqueRating",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // ~4kJ per kcal, 0.25 allows max 16384 kcal
+            name: "activeMet",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 4,
+            offset: 0,
+            units: "kcal/day",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "metabolicAge",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "years",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "visceralFatRating",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // Associates this weight scale message to a user. This corresponds to the index of the user profile message in the weight scale file.
+            name: "userProfileIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            name: "bmi",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "kg/m^2",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      51: {
+        num: 51,
+        name: "bloodPressure",
+        messagesKey: "bloodPressureMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "systolicPressure",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mmHg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "diastolicPressure",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mmHg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "meanArterialPressure",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mmHg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "map3SampleMean",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mmHg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "mapMorningValues",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mmHg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "mapEveningValues",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "mmHg",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "heartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "heartRateType",
+            type: "hrType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "status",
+            type: "bpStatus",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Associates this blood pressure message to a user. This corresponds to the index of the user profile message in the blood pressure file.
+            name: "userProfileIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      103: {
+        num: 103,
+        name: "monitoringInfo",
+        messagesKey: "monitoringInfoMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Use to convert activity timestamps to local time if device does not support time zone and daylight savings time correction.
+            name: "localTimestamp",
+            type: "localDateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "activityType",
+            type: "activityType",
+            baseType: "enum",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Indexed by activity_type
+            name: "cyclesToDistance",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 5e3,
+            offset: 0,
+            units: "m/cycle",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Indexed by activity_type
+            name: "cyclesToCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 5e3,
+            offset: 0,
+            units: "kcal/cycle",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "restingMetabolicRate",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal / day",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      55: {
+        num: 55,
+        name: "monitoring",
+        messagesKey: "monitoringMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Must align to logging interval, for example, time must be 00:00:00 for daily log.
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Associates this data to device_info message. Not required for file with single device (sensor).
+            name: "deviceIndex",
+            type: "deviceIndex",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Accumulated total calories. Maintained by MonitoringReader for each activity_type. See SDK documentation
+            name: "calories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Accumulated distance. Maintained by MonitoringReader for each activity_type. See SDK documentation.
+            name: "distance",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Accumulated cycles. Maintained by MonitoringReader for each activity_type. See SDK documentation.
+            name: "cycles",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 2,
+            offset: 0,
+            units: "cycles",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: [
+              {
+                name: "steps",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 1,
+                offset: 0,
+                units: "steps",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "activityType", value: 6 },
+                  { name: "activityType", value: 1 }
+                ]
+              },
+              {
+                name: "strokes",
+                type: "uint32",
+                baseType: "uint32",
+                scale: 2,
+                offset: 0,
+                units: "strokes",
+                bits: [],
+                components: [],
+                hasComponents: false,
+                map: [
+                  { name: "activityType", value: 2 },
+                  { name: "activityType", value: 5 }
+                ]
+              }
+            ]
+          },
+          4: {
+            num: 4,
+            name: "activeTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "activityType",
+            type: "activityType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "activitySubtype",
+            type: "activitySubtype",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "activityLevel",
+            type: "activityLevel",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "distance16",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "100 * m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "cycles16",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "2 * cycles (steps)",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "activeTime16",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            // Must align to logging interval, for example, time must be 00:00:00 for daily log.
+            name: "localTimestamp",
+            type: "localDateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // Avg temperature during the logging interval ended at timestamp
+            name: "temperature",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            // Min temperature during the logging interval ended at timestamp
+            name: "temperatureMin",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            // Max temperature during the logging interval ended at timestamp
+            name: "temperatureMax",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            // Indexed using minute_activity_level enum
+            name: "activityTime",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "minutes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          19: {
+            num: 19,
+            name: "activeCalories",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "kcal",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            // Indicates single type / intensity for duration since last monitoring message.
+            name: "currentActivityTypeIntensity",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: [1, 1],
+            offset: [0, 0],
+            units: ["", ""],
+            bits: [5, 3],
+            components: ["5", "28"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            name: "timestampMin8",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          26: {
+            num: 26,
+            name: "timestamp16",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          27: {
+            num: 27,
+            name: "heartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          28: {
+            num: 28,
+            name: "intensity",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          29: {
+            num: 29,
+            name: "durationMin",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          30: {
+            num: 30,
+            name: "duration",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          31: {
+            num: 31,
+            name: "ascent",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          32: {
+            num: 32,
+            name: "descent",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          33: {
+            num: 33,
+            name: "moderateActivityMinutes",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "minutes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          34: {
+            num: 34,
+            name: "vigorousActivityMinutes",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "minutes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          41: {
+            num: 41,
+            // Wheelchair Pushes
+            name: "pushes",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      211: {
+        num: 211,
+        name: "monitoringHrData",
+        messagesKey: "monitoringHrDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Must align to logging interval, for example, time must be 00:00:00 for daily log.
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // 7-day rolling average
+            name: "restingHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // RHR for today only. (Feeds into 7-day average)
+            name: "currentDayRestingHeartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      269: {
+        num: 269,
+        name: "spo2Data",
+        messagesKey: "spo2DataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "readingSpo2",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "readingConfidence",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Mode when data was captured
+            name: "mode",
+            type: "spo2MeasurementType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      132: {
+        num: 132,
+        name: "hr",
+        messagesKey: "hrMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "fractionalTimestamp",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 32768,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "time256",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: [256],
+            offset: [0],
+            units: ["s"],
+            bits: [8],
+            components: ["0"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "filteredBpm",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "eventTimestamp",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1024,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: true,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "eventTimestamp12",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024],
+            offset: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            units: ["s", "", "", "", "", "", "", "", "", ""],
+            bits: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
+            components: ["9", "9", "9", "9", "9", "9", "9", "9", "9", "9"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          }
+        }
+      },
+      227: {
+        num: 227,
+        // Value from 1 to 100 calculated by FirstBeat
+        name: "stressLevel",
+        messagesKey: "stressLevelMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "stressLevelValue",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Time stress score was calculated
+            name: "stressLevelTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      229: {
+        num: 229,
+        name: "maxMetData",
+        messagesKey: "maxMetDataMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Time maxMET and vo2 were calculated
+            name: "updateTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "vo2Max",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "mL/kg/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "sport",
+            type: "sport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "subSport",
+            type: "subSport",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "maxMetCategory",
+            type: "maxMetCategory",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Indicates if calibrated data was used in the calculation
+            name: "calibratedData",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // Indicates if the estimate was obtained using a chest strap or wrist heart rate
+            name: "hrSource",
+            type: "maxMetHeartRateSource",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            // Indidcates if the estimate was obtained using onboard GPS or connected GPS
+            name: "speedSource",
+            type: "maxMetSpeedSource",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      314: {
+        num: 314,
+        // Body battery data used for HSA custom data logging
+        name: "hsaBodyBatteryData",
+        messagesKey: "hsaBodyBatteryDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Body battery level: [0,100] Blank: -16
+            name: "level",
+            type: "sint8",
+            baseType: "sint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Body battery charged value
+            name: "charged",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Body battery uncharged value
+            name: "uncharged",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      315: {
+        num: 315,
+        // HSA events
+        name: "hsaEvent",
+        messagesKey: "hsaEventMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Event ID. Health SDK use only
+            name: "eventId",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      302: {
+        num: 302,
+        // Raw accelerometer data used for HSA custom data logging
+        name: "hsaAccelerometerData",
+        messagesKey: "hsaAccelerometerDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond resolution of the timestamp
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Sampling Interval in Milliseconds
+            name: "samplingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // X-Axis Measurement
+            name: "accelX",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1.024,
+            offset: 0,
+            units: "mG",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Y-Axis Measurement
+            name: "accelY",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1.024,
+            offset: 0,
+            units: "mG",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Z-Axis Measurement
+            name: "accelZ",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 1.024,
+            offset: 0,
+            units: "mG",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // 32 kHz timestamp
+            name: "timestamp32k",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      376: {
+        num: 376,
+        name: "hsaGyroscopeData",
+        messagesKey: "hsaGyroscopeDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond resolution of the timestamp
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Sampling Interval in 32 kHz timescale
+            name: "samplingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "1/32768 s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // X-Axis Measurement
+            name: "gyroX",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 28.57143,
+            offset: 0,
+            units: "deg/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Y-Axis Measurement
+            name: "gyroY",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 28.57143,
+            offset: 0,
+            units: "deg/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Z-Axis Measurement
+            name: "gyroZ",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 28.57143,
+            offset: 0,
+            units: "deg/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // 32 kHz timestamp
+            name: "timestamp32k",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "1/32768 s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      304: {
+        num: 304,
+        // User's current daily step data used for HSA custom data logging
+        name: "hsaStepData",
+        messagesKey: "hsaStepDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds. File start: 0xFFFFFFEF File stop: 0xFFFFFFEE
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Total step sum
+            name: "steps",
+            type: "uint32",
+            baseType: "uint32",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "steps",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      305: {
+        num: 305,
+        // User's current SpO2 data used for HSA custom data logging
+        name: "hsaSpo2Data",
+        messagesKey: "hsaSpo2DataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // SpO2 Reading: [70,100] Blank: 240
+            name: "readingSpo2",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // SpO2 Confidence: [0,254]
+            name: "confidence",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      306: {
+        num: 306,
+        // User's current stress data used for HSA custom data logging
+        name: "hsaStressData",
+        messagesKey: "hsaStressDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Stress Level: [0,100] Off wrist: -1 Excess motion: -2 Not enough data: -3 Recovering from exercise: -4 Unidentified: -5 Blank: -16
+            name: "stressLevel",
+            type: "sint8",
+            baseType: "sint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      307: {
+        num: 307,
+        // User's current respiration data used for HSA custom data logging
+        name: "hsaRespirationData",
+        messagesKey: "hsaRespirationDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Breaths / min: [1,100] Invalid: 255 Excess motion: 254 Off wrist: 253 Not available: 252 Blank: 2.4
+            name: "respirationRate",
+            type: "sint16",
+            baseType: "sint16",
+            array: true,
+            scale: 100,
+            offset: 0,
+            units: "breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      308: {
+        num: 308,
+        // User's current heart rate data used for HSA custom data logging
+        name: "hsaHeartRateData",
+        messagesKey: "hsaHeartRateDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Status of measurements in buffer - 0 indicates SEARCHING 1 indicates LOCKED
+            name: "status",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Beats / min. Blank: 0
+            name: "heartRate",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "bpm",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      389: {
+        num: 389,
+        // Configuration data for HSA custom data logging
+        name: "hsaConfigurationData",
+        messagesKey: "hsaConfigurationDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            // Encoded configuration data
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Encoded configuration data. Health SDK use only
+            name: "data",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Size in bytes of data field
+            name: "dataSize",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      409: {
+        num: 409,
+        // Wrist temperature data used for HSA custom data logging
+        name: "hsaWristTemperatureData",
+        messagesKey: "hsaWristTemperatureDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Processing interval length in seconds
+            name: "processingInterval",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Wrist temperature reading
+            name: "value",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "C",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      145: {
+        num: 145,
+        name: "memoGlob",
+        messagesKey: "memoGlobMesgs",
+        fields: {
+          250: {
+            num: 250,
+            // Sequence number of memo blocks
+            name: "partIndex",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Deprecated. Use data field.
+            name: "memo",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Message Number of the parent message
+            name: "mesgNum",
+            type: "mesgNum",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Index of mesg that this glob is associated with.
+            name: "parentIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Field within the parent that this glob is associated with
+            name: "fieldNum",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Block of utf8 bytes. Note, mutltibyte characters may be split across adjoining memo_glob messages.
+            name: "data",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      275: {
+        num: 275,
+        name: "sleepLevel",
+        messagesKey: "sleepLevelMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "sleepLevel",
+            type: "sleepLevel",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      82: {
+        num: 82,
+        name: "antChannelId",
+        messagesKey: "antChannelIdMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "channelNumber",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "deviceType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "deviceNumber",
+            type: "uint16z",
+            baseType: "uint16z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "transmissionType",
+            type: "uint8z",
+            baseType: "uint8z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "deviceIndex",
+            type: "deviceIndex",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      80: {
+        num: 80,
+        name: "antRx",
+        messagesKey: "antRxMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "fractionalTimestamp",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 32768,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "mesgId",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "mesgData",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+            offset: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            units: ["", "", "", "", "", "", "", "", ""],
+            bits: [8, 8, 8, 8, 8, 8, 8, 8, 8],
+            components: ["3", "4", "4", "4", "4", "4", "4", "4", "4"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "channelNumber",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "data",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      81: {
+        num: 81,
+        name: "antTx",
+        messagesKey: "antTxMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "fractionalTimestamp",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 32768,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "mesgId",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "mesgData",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+            offset: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            units: ["", "", "", "", "", "", "", "", ""],
+            bits: [8, 8, 8, 8, 8, 8, 8, 8, 8],
+            components: ["3", "4", "4", "4", "4", "4", "4", "4", "4"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "channelNumber",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "data",
+            type: "byte",
+            baseType: "byte",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      200: {
+        num: 200,
+        name: "exdScreenConfiguration",
+        messagesKey: "exdScreenConfigurationMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "screenIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // number of fields in screen
+            name: "fieldCount",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "layout",
+            type: "exdLayout",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "screenEnabled",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      201: {
+        num: 201,
+        name: "exdDataFieldConfiguration",
+        messagesKey: "exdDataFieldConfigurationMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "screenIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "conceptField",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: [1, 1],
+            offset: [0, 0],
+            units: ["", ""],
+            bits: [4, 4],
+            components: ["2", "3"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "fieldId",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "conceptCount",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "displayType",
+            type: "exdDisplayType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "title",
+            type: "string",
+            baseType: "string",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      202: {
+        num: 202,
+        name: "exdDataConceptConfiguration",
+        messagesKey: "exdDataConceptConfigurationMesgs",
+        fields: {
+          0: {
+            num: 0,
+            name: "screenIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "conceptField",
+            type: "byte",
+            baseType: "byte",
+            array: false,
+            scale: [1, 1],
+            offset: [0, 0],
+            units: ["", ""],
+            bits: [4, 4],
+            components: ["2", "3"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "fieldId",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "conceptIndex",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "dataPage",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "conceptKey",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "scaling",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "dataUnits",
+            type: "exdDataUnits",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "qualifier",
+            type: "exdQualifiers",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "descriptor",
+            type: "exdDescriptors",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "isSigned",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      268: {
+        num: 268,
+        name: "diveSummary",
+        messagesKey: "diveSummaryMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "referenceMesg",
+            type: "mesgNum",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "referenceIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // 0 if above water
+            name: "avgDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // 0 if above water
+            name: "maxDepth",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Time since end of last dive
+            name: "surfaceInterval",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "startCns",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "endCns",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            name: "startN2",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            name: "endN2",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "percent",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            name: "o2Toxicity",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "OTUs",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            name: "diveNumber",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            name: "bottomTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          12: {
+            num: 12,
+            // Average pressure-based surface air consumption
+            name: "avgPressureSac",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "bar/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          13: {
+            num: 13,
+            // Average volumetric surface air consumption
+            name: "avgVolumeSac",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "L/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            // Average respiratory minute volume
+            name: "avgRmv",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "L/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            // Time to reach deepest level stop
+            name: "descentTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          16: {
+            num: 16,
+            // Time after leaving bottom until reaching surface
+            name: "ascentTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          17: {
+            num: 17,
+            // Average ascent rate, not including descents or stops
+            name: "avgAscentRate",
+            type: "sint32",
+            baseType: "sint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          22: {
+            num: 22,
+            // Average descent rate, not including ascents or stops
+            name: "avgDescentRate",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          23: {
+            num: 23,
+            // Maximum ascent rate
+            name: "maxAscentRate",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          24: {
+            num: 24,
+            // Maximum descent rate
+            name: "maxDescentRate",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          25: {
+            num: 25,
+            // Time spent neither ascending nor descending
+            name: "hangTime",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      289: {
+        num: 289,
+        // Number of acclerometer zero crossings summed over the specified time interval
+        name: "aadAccelFeatures",
+        messagesKey: "aadAccelFeaturesMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Time interval length in seconds
+            name: "time",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Total accelerometer energy in the interval
+            name: "energyTotal",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Count of zero crossings
+            name: "zeroCrossCnt",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Instance ID of zero crossing algorithm
+            name: "instance",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Total accelerometer time above threshold in the interval
+            name: "timeAboveThreshold",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 25,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      78: {
+        num: 78,
+        // Heart rate variability
+        name: "hrv",
+        messagesKey: "hrvMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Time between beats
+            name: "time",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1e3,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      290: {
+        num: 290,
+        // Array of heart beat intervals
+        name: "beatIntervals",
+        messagesKey: "beatIntervalsMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Milliseconds past date_time
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Array of millisecond times between beats
+            name: "time",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      370: {
+        num: 370,
+        name: "hrvStatusSummary",
+        messagesKey: "hrvStatusSummaryMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // 7 day RMSSD average over sleep
+            name: "weeklyAverage",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Last night RMSSD average over sleep
+            name: "lastNightAverage",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // 5 minute high RMSSD value over sleep
+            name: "lastNight5MinHigh",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // 3 week baseline, upper boundary of low HRV status
+            name: "baselineLowUpper",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // 3 week baseline, lower boundary of balanced HRV status
+            name: "baselineBalancedLower",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // 3 week baseline, upper boundary of balanced HRV status
+            name: "baselineBalancedUpper",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "status",
+            type: "hrvStatus",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      371: {
+        num: 371,
+        name: "hrvValue",
+        messagesKey: "hrvValueMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // 5 minute RMSSD
+            name: "value",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 128,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      372: {
+        num: 372,
+        // Raw Beat-to-Beat Interval values
+        name: "rawBbi",
+        messagesKey: "rawBbiMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Millisecond resolution of the timestamp
+            name: "timestampMs",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // 1 bit for gap indicator, 1 bit for quality indicator, and 14 bits for Beat-to-Beat interval values in whole-integer millisecond resolution
+            name: "data",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            offset: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            units: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+            bits: [14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1, 14, 1, 1],
+            components: ["2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4", "2", "3", "4"],
+            isAccumulated: false,
+            hasComponents: true,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Array of millisecond times between beats
+            name: "time",
+            type: "uint16",
+            baseType: "uint16",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "ms",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // 1 = high confidence. 0 = low confidence. N/A when gap = 1
+            name: "quality",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // 1 = gap (time represents ms gap length). 0 = BBI data
+            name: "gap",
+            type: "uint8",
+            baseType: "uint8",
+            array: true,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      297: {
+        num: 297,
+        name: "respirationRate",
+        messagesKey: "respirationRateMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            // Breaths * 100 /min, -300 indicates invalid, -200 indicates large motion, -100 indicates off wrist
+            name: "respirationRate",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "breaths/min",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      387: {
+        num: 387,
+        // Specifically used for XERO products.
+        name: "chronoShotSession",
+        messagesKey: "chronoShotSessionMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "minSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "maxSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "avgSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "shotCount",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "projectileType",
+            type: "projectileType",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "grainWeight",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 10,
+            offset: 0,
+            units: "gr",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "standardDeviation",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      388: {
+        num: 388,
+        // Specifically used for XERO products.
+        name: "chronoShotData",
+        messagesKey: "chronoShotDataMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "shotSpeed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 1e3,
+            offset: 0,
+            units: "m/s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "shotNum",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      319: {
+        num: 319,
+        name: "tankUpdate",
+        messagesKey: "tankUpdateMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "sensor",
+            type: "antChannelId",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "pressure",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "bar",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      323: {
+        num: 323,
+        name: "tankSummary",
+        messagesKey: "tankSummaryMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "s",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "sensor",
+            type: "antChannelId",
+            baseType: "uint32z",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "startPressure",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "bar",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "endPressure",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "bar",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "volumeUsed",
+            type: "uint32",
+            baseType: "uint32",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "L",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      346: {
+        num: 346,
+        name: "sleepAssessment",
+        messagesKey: "sleepAssessmentMesgs",
+        fields: {
+          0: {
+            num: 0,
+            // Average of awake_time_score and awakenings_count_score. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "combinedAwakeScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // Score that evaluates the total time spent awake between sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "awakeTimeScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // Score that evaluates the number of awakenings that interrupt sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "awakeningsCountScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            // Score that evaluates the amount of deep sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "deepSleepScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Score that evaluates the quality of sleep based on sleep stages, heart-rate variability and possible awakenings during the night. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "sleepDurationScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            // Score that evaluates the amount of light sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "lightSleepScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            // Total score that summarizes the overall quality of sleep, combining sleep duration and quality. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "overallSleepScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // Score that evaluates the quality of sleep based on sleep stages, heart-rate variability and possible awakenings during the night. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "sleepQualityScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          8: {
+            num: 8,
+            // Score that evaluates stress and recovery during sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "sleepRecoveryScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          9: {
+            num: 9,
+            // Score that evaluates the amount of REM sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "remSleepScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          10: {
+            num: 10,
+            // Score that evaluates the amount of restlessness during sleep. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "sleepRestlessnessScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          11: {
+            num: 11,
+            // The number of awakenings during sleep.
+            name: "awakeningsCount",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          14: {
+            num: 14,
+            // Score that evaluates the sleep interruptions. If valid: 0 (worst) to 100 (best). If unknown: FIT_UINT8_INVALID.
+            name: "interruptionsScore",
+            type: "uint8",
+            baseType: "uint8",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          15: {
+            num: 15,
+            // Excludes stress during awake periods in the sleep window
+            name: "averageStressDuringSleep",
+            type: "uint16",
+            baseType: "uint16",
+            array: false,
+            scale: 100,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      470: {
+        num: 470,
+        name: "sleepDisruptionSeverityPeriod",
+        messagesKey: "sleepDisruptionSeverityPeriodMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "severity",
+            type: "sleepDisruptionSeverity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      471: {
+        num: 471,
+        name: "sleepDisruptionOvernightSeverity",
+        messagesKey: "sleepDisruptionOvernightSeverityMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "severity",
+            type: "sleepDisruptionSeverity",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      412: {
+        num: 412,
+        name: "napEvent",
+        messagesKey: "napEventMesgs",
+        fields: {
+          254: {
+            num: 254,
+            name: "messageIndex",
+            type: "messageIndex",
+            baseType: "uint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "startTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "seconds",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            name: "startTimezoneOffset",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "minutes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            name: "endTime",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "seconds",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          3: {
+            num: 3,
+            name: "endTimezoneOffset",
+            type: "sint16",
+            baseType: "sint16",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "minutes",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            name: "feedback",
+            type: "napPeriodFeedback",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          5: {
+            num: 5,
+            name: "isDeleted",
+            type: "bool",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          6: {
+            num: 6,
+            name: "source",
+            type: "napSource",
+            baseType: "enum",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          7: {
+            num: 7,
+            // The timestamp representing when this nap event was last updated
+            name: "updateTimestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      398: {
+        num: 398,
+        name: "skinTempOvernight",
+        messagesKey: "skinTempOvernightMesgs",
+        fields: {
+          253: {
+            num: 253,
+            name: "timestamp",
+            type: "dateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          0: {
+            num: 0,
+            name: "localTimestamp",
+            type: "localDateTime",
+            baseType: "uint32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          1: {
+            num: 1,
+            // The average overnight deviation from baseline temperature in degrees C
+            name: "averageDeviation",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          2: {
+            num: 2,
+            // The average 7 day overnight deviation from baseline temperature in degrees C
+            name: "average7DayDeviation",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          },
+          4: {
+            num: 4,
+            // Final overnight temperature value
+            name: "nightlyValue",
+            type: "float32",
+            baseType: "float32",
+            array: false,
+            scale: 1,
+            offset: 0,
+            units: "",
+            bits: [],
+            components: [],
+            isAccumulated: false,
+            hasComponents: false,
+            subFields: []
+          }
+        }
+      },
+      105: {
+        num: 105,
+        name: "pad",
+        messagesKey: "padMesgs",
+        fields: {}
+      }
+    },
+    types: {
+      file: {
+        1: "device",
+        // Read only, single file. Must be in root directory.
+        2: "settings",
+        // Read/write, single file. Directory=Settings
+        3: "sport",
+        // Read/write, multiple files, file number = sport type. Directory=Sports
+        4: "activity",
+        // Read/erase, multiple files. Directory=Activities
+        5: "workout",
+        // Read/write/erase, multiple files. Directory=Workouts
+        6: "course",
+        // Read/write/erase, multiple files. Directory=Courses
+        7: "schedules",
+        // Read/write, single file. Directory=Schedules
+        9: "weight",
+        // Read only, single file. Circular buffer. All message definitions at start of file. Directory=Weight
+        10: "totals",
+        // Read only, single file. Directory=Totals
+        11: "goals",
+        // Read/write, single file. Directory=Goals
+        14: "bloodPressure",
+        // Read only. Directory=Blood Pressure
+        15: "monitoringA",
+        // Read only. Directory=Monitoring. File number=sub type.
+        20: "activitySummary",
+        // Read/erase, multiple files. Directory=Activities
+        28: "monitoringDaily",
+        32: "monitoringB",
+        // Read only. Directory=Monitoring. File number=identifier
+        34: "segment",
+        // Read/write/erase. Multiple Files. Directory=Segments
+        35: "segmentList",
+        // Read/write/erase. Single File. Directory=Segments
+        40: "exdConfiguration",
+        // Read/write/erase. Single File. Directory=Settings
+        247: "mfgRangeMin",
+        // 0xF7 - 0xFE reserved for manufacturer specific file types
+        254: "mfgRangeMax"
+        // 0xF7 - 0xFE reserved for manufacturer specific file types
+      },
+      mesgNum: {
+        0: "fileId",
+        1: "capabilities",
+        2: "deviceSettings",
+        3: "userProfile",
+        4: "hrmProfile",
+        5: "sdmProfile",
+        6: "bikeProfile",
+        7: "zonesTarget",
+        8: "hrZone",
+        9: "powerZone",
+        10: "metZone",
+        12: "sport",
+        13: "trainingSettings",
+        15: "goal",
+        18: "session",
+        19: "lap",
+        20: "record",
+        21: "event",
+        23: "deviceInfo",
+        26: "workout",
+        27: "workoutStep",
+        28: "schedule",
+        30: "weightScale",
+        31: "course",
+        32: "coursePoint",
+        33: "totals",
+        34: "activity",
+        35: "software",
+        37: "fileCapabilities",
+        38: "mesgCapabilities",
+        39: "fieldCapabilities",
+        49: "fileCreator",
+        51: "bloodPressure",
+        53: "speedZone",
+        55: "monitoring",
+        72: "trainingFile",
+        78: "hrv",
+        80: "antRx",
+        81: "antTx",
+        82: "antChannelId",
+        101: "length",
+        103: "monitoringInfo",
+        105: "pad",
+        106: "slaveDevice",
+        127: "connectivity",
+        128: "weatherConditions",
+        129: "weatherAlert",
+        131: "cadenceZone",
+        132: "hr",
+        142: "segmentLap",
+        145: "memoGlob",
+        148: "segmentId",
+        149: "segmentLeaderboardEntry",
+        150: "segmentPoint",
+        151: "segmentFile",
+        158: "workoutSession",
+        159: "watchfaceSettings",
+        160: "gpsMetadata",
+        161: "cameraEvent",
+        162: "timestampCorrelation",
+        164: "gyroscopeData",
+        165: "accelerometerData",
+        167: "threeDSensorCalibration",
+        169: "videoFrame",
+        174: "obdiiData",
+        177: "nmeaSentence",
+        178: "aviationAttitude",
+        184: "video",
+        185: "videoTitle",
+        186: "videoDescription",
+        187: "videoClip",
+        188: "ohrSettings",
+        200: "exdScreenConfiguration",
+        201: "exdDataFieldConfiguration",
+        202: "exdDataConceptConfiguration",
+        206: "fieldDescription",
+        207: "developerDataId",
+        208: "magnetometerData",
+        209: "barometerData",
+        210: "oneDSensorCalibration",
+        211: "monitoringHrData",
+        216: "timeInZone",
+        225: "set",
+        227: "stressLevel",
+        229: "maxMetData",
+        258: "diveSettings",
+        259: "diveGas",
+        262: "diveAlarm",
+        264: "exerciseTitle",
+        268: "diveSummary",
+        269: "spo2Data",
+        275: "sleepLevel",
+        285: "jump",
+        289: "aadAccelFeatures",
+        290: "beatIntervals",
+        297: "respirationRate",
+        302: "hsaAccelerometerData",
+        304: "hsaStepData",
+        305: "hsaSpo2Data",
+        306: "hsaStressData",
+        307: "hsaRespirationData",
+        308: "hsaHeartRateData",
+        312: "split",
+        313: "splitSummary",
+        314: "hsaBodyBatteryData",
+        315: "hsaEvent",
+        317: "climbPro",
+        319: "tankUpdate",
+        323: "tankSummary",
+        346: "sleepAssessment",
+        370: "hrvStatusSummary",
+        371: "hrvValue",
+        372: "rawBbi",
+        375: "deviceAuxBatteryInfo",
+        376: "hsaGyroscopeData",
+        387: "chronoShotSession",
+        388: "chronoShotData",
+        389: "hsaConfigurationData",
+        393: "diveApneaAlarm",
+        398: "skinTempOvernight",
+        409: "hsaWristTemperatureData",
+        // Message number for the HSA wrist temperature data message
+        412: "napEvent",
+        470: "sleepDisruptionSeverityPeriod",
+        471: "sleepDisruptionOvernightSeverity",
+        65280: "mfgRangeMin",
+        // 0xFF00 - 0xFFFE reserved for manufacturer specific messages
+        65534: "mfgRangeMax"
+        // 0xFF00 - 0xFFFE reserved for manufacturer specific messages
+      },
+      checksum: {
+        0: "clear",
+        // Allows clear of checksum for flash memory where can only write 1 to 0 without erasing sector.
+        1: "ok"
+        // Set to mark checksum as valid if computes to invalid values 0 or 0xFF. Checksum can also be set to ok to save encoding computation time.
+      },
+      fileFlags: {
+        2: "read",
+        4: "write",
+        8: "erase"
+      },
+      mesgCount: {
+        0: "numPerFile",
+        1: "maxPerFile",
+        2: "maxPerFileType"
+      },
+      dateTime: {
+        268435456: "min"
+        // if date_time is < 0x10000000 then it is system time (seconds from device power on)
+      },
+      localDateTime: {
+        268435456: "min"
+        // if date_time is < 0x10000000 then it is system time (seconds from device power on)
+      },
+      messageIndex: {
+        32768: "selected",
+        // message is selected if set
+        28672: "reserved",
+        // reserved (default 0)
+        4095: "mask"
+        // index
+      },
+      deviceIndex: {
+        0: "creator"
+        // Creator of the file is always device index 0.
+      },
+      gender: {
+        0: "female",
+        1: "male"
+      },
+      language: {
+        0: "english",
+        1: "french",
+        2: "italian",
+        3: "german",
+        4: "spanish",
+        5: "croatian",
+        6: "czech",
+        7: "danish",
+        8: "dutch",
+        9: "finnish",
+        10: "greek",
+        11: "hungarian",
+        12: "norwegian",
+        13: "polish",
+        14: "portuguese",
+        15: "slovakian",
+        16: "slovenian",
+        17: "swedish",
+        18: "russian",
+        19: "turkish",
+        20: "latvian",
+        21: "ukrainian",
+        22: "arabic",
+        23: "farsi",
+        24: "bulgarian",
+        25: "romanian",
+        26: "chinese",
+        27: "japanese",
+        28: "korean",
+        29: "taiwanese",
+        30: "thai",
+        31: "hebrew",
+        32: "brazilianPortuguese",
+        33: "indonesian",
+        34: "malaysian",
+        35: "vietnamese",
+        36: "burmese",
+        37: "mongolian",
+        254: "custom"
+      },
+      languageBits0: {
+        1: "english",
+        2: "french",
+        4: "italian",
+        8: "german",
+        16: "spanish",
+        32: "croatian",
+        64: "czech",
+        128: "danish"
+      },
+      languageBits1: {
+        1: "dutch",
+        2: "finnish",
+        4: "greek",
+        8: "hungarian",
+        16: "norwegian",
+        32: "polish",
+        64: "portuguese",
+        128: "slovakian"
+      },
+      languageBits2: {
+        1: "slovenian",
+        2: "swedish",
+        4: "russian",
+        8: "turkish",
+        16: "latvian",
+        32: "ukrainian",
+        64: "arabic",
+        128: "farsi"
+      },
+      languageBits3: {
+        1: "bulgarian",
+        2: "romanian",
+        4: "chinese",
+        8: "japanese",
+        16: "korean",
+        32: "taiwanese",
+        64: "thai",
+        128: "hebrew"
+      },
+      languageBits4: {
+        1: "brazilianPortuguese",
+        2: "indonesian",
+        4: "malaysian",
+        8: "vietnamese",
+        16: "burmese",
+        32: "mongolian"
+      },
+      timeZone: {
+        0: "almaty",
+        1: "bangkok",
+        2: "bombay",
+        3: "brasilia",
+        4: "cairo",
+        5: "capeVerdeIs",
+        6: "darwin",
+        7: "eniwetok",
+        8: "fiji",
+        9: "hongKong",
+        10: "islamabad",
+        11: "kabul",
+        12: "magadan",
+        13: "midAtlantic",
+        14: "moscow",
+        15: "muscat",
+        16: "newfoundland",
+        17: "samoa",
+        18: "sydney",
+        19: "tehran",
+        20: "tokyo",
+        21: "usAlaska",
+        22: "usAtlantic",
+        23: "usCentral",
+        24: "usEastern",
+        25: "usHawaii",
+        26: "usMountain",
+        27: "usPacific",
+        28: "other",
+        29: "auckland",
+        30: "kathmandu",
+        31: "europeWesternWet",
+        32: "europeCentralCet",
+        33: "europeEasternEet",
+        34: "jakarta",
+        35: "perth",
+        36: "adelaide",
+        37: "brisbane",
+        38: "tasmania",
+        39: "iceland",
+        40: "amsterdam",
+        41: "athens",
+        42: "barcelona",
+        43: "berlin",
+        44: "brussels",
+        45: "budapest",
+        46: "copenhagen",
+        47: "dublin",
+        48: "helsinki",
+        49: "lisbon",
+        50: "london",
+        51: "madrid",
+        52: "munich",
+        53: "oslo",
+        54: "paris",
+        55: "prague",
+        56: "reykjavik",
+        57: "rome",
+        58: "stockholm",
+        59: "vienna",
+        60: "warsaw",
+        61: "zurich",
+        62: "quebec",
+        63: "ontario",
+        64: "manitoba",
+        65: "saskatchewan",
+        66: "alberta",
+        67: "britishColumbia",
+        68: "boise",
+        69: "boston",
+        70: "chicago",
+        71: "dallas",
+        72: "denver",
+        73: "kansasCity",
+        74: "lasVegas",
+        75: "losAngeles",
+        76: "miami",
+        77: "minneapolis",
+        78: "newYork",
+        79: "newOrleans",
+        80: "phoenix",
+        81: "santaFe",
+        82: "seattle",
+        83: "washingtonDc",
+        84: "usArizona",
+        85: "chita",
+        86: "ekaterinburg",
+        87: "irkutsk",
+        88: "kaliningrad",
+        89: "krasnoyarsk",
+        90: "novosibirsk",
+        91: "petropavlovskKamchatskiy",
+        92: "samara",
+        93: "vladivostok",
+        94: "mexicoCentral",
+        95: "mexicoMountain",
+        96: "mexicoPacific",
+        97: "capeTown",
+        98: "winkhoek",
+        99: "lagos",
+        100: "riyahd",
+        101: "venezuela",
+        102: "australiaLh",
+        103: "santiago",
+        253: "manual",
+        254: "automatic"
+      },
+      displayMeasure: {
+        0: "metric",
+        1: "statute",
+        2: "nautical"
+      },
+      displayHeart: {
+        0: "bpm",
+        1: "max",
+        2: "reserve"
+      },
+      displayPower: {
+        0: "watts",
+        1: "percentFtp"
+      },
+      displayPosition: {
+        0: "degree",
+        // dd.dddddd
+        1: "degreeMinute",
+        // dddmm.mmm
+        2: "degreeMinuteSecond",
+        // dddmmss
+        3: "austrianGrid",
+        // Austrian Grid (BMN)
+        4: "britishGrid",
+        // British National Grid
+        5: "dutchGrid",
+        // Dutch grid system
+        6: "hungarianGrid",
+        // Hungarian grid system
+        7: "finnishGrid",
+        // Finnish grid system Zone3 KKJ27
+        8: "germanGrid",
+        // Gausss Krueger (German)
+        9: "icelandicGrid",
+        // Icelandic Grid
+        10: "indonesianEquatorial",
+        // Indonesian Equatorial LCO
+        11: "indonesianIrian",
+        // Indonesian Irian LCO
+        12: "indonesianSouthern",
+        // Indonesian Southern LCO
+        13: "indiaZone0",
+        // India zone 0
+        14: "indiaZoneIA",
+        // India zone IA
+        15: "indiaZoneIB",
+        // India zone IB
+        16: "indiaZoneIIA",
+        // India zone IIA
+        17: "indiaZoneIIB",
+        // India zone IIB
+        18: "indiaZoneIIIA",
+        // India zone IIIA
+        19: "indiaZoneIIIB",
+        // India zone IIIB
+        20: "indiaZoneIVA",
+        // India zone IVA
+        21: "indiaZoneIVB",
+        // India zone IVB
+        22: "irishTransverse",
+        // Irish Transverse Mercator
+        23: "irishGrid",
+        // Irish Grid
+        24: "loran",
+        // Loran TD
+        25: "maidenheadGrid",
+        // Maidenhead grid system
+        26: "mgrsGrid",
+        // MGRS grid system
+        27: "newZealandGrid",
+        // New Zealand grid system
+        28: "newZealandTransverse",
+        // New Zealand Transverse Mercator
+        29: "qatarGrid",
+        // Qatar National Grid
+        30: "modifiedSwedishGrid",
+        // Modified RT-90 (Sweden)
+        31: "swedishGrid",
+        // RT-90 (Sweden)
+        32: "southAfricanGrid",
+        // South African Grid
+        33: "swissGrid",
+        // Swiss CH-1903 grid
+        34: "taiwanGrid",
+        // Taiwan Grid
+        35: "unitedStatesGrid",
+        // United States National Grid
+        36: "utmUpsGrid",
+        // UTM/UPS grid system
+        37: "westMalayan",
+        // West Malayan RSO
+        38: "borneoRso",
+        // Borneo RSO
+        39: "estonianGrid",
+        // Estonian grid system
+        40: "latvianGrid",
+        // Latvian Transverse Mercator
+        41: "swedishRef99Grid"
+        // Reference Grid 99 TM (Swedish)
+      },
+      switch: {
+        0: "off",
+        1: "on",
+        2: "auto"
+      },
+      sport: {
+        0: "generic",
+        1: "running",
+        2: "cycling",
+        3: "transition",
+        // Mulitsport transition
+        4: "fitnessEquipment",
+        5: "swimming",
+        6: "basketball",
+        7: "soccer",
+        8: "tennis",
+        9: "americanFootball",
+        10: "training",
+        11: "walking",
+        12: "crossCountrySkiing",
+        13: "alpineSkiing",
+        14: "snowboarding",
+        15: "rowing",
+        16: "mountaineering",
+        17: "hiking",
+        18: "multisport",
+        19: "paddling",
+        20: "flying",
+        21: "eBiking",
+        22: "motorcycling",
+        23: "boating",
+        24: "driving",
+        25: "golf",
+        26: "hangGliding",
+        27: "horsebackRiding",
+        28: "hunting",
+        29: "fishing",
+        30: "inlineSkating",
+        31: "rockClimbing",
+        32: "sailing",
+        33: "iceSkating",
+        34: "skyDiving",
+        35: "snowshoeing",
+        36: "snowmobiling",
+        37: "standUpPaddleboarding",
+        38: "surfing",
+        39: "wakeboarding",
+        40: "waterSkiing",
+        41: "kayaking",
+        42: "rafting",
+        43: "windsurfing",
+        44: "kitesurfing",
+        45: "tactical",
+        46: "jumpmaster",
+        47: "boxing",
+        48: "floorClimbing",
+        49: "baseball",
+        53: "diving",
+        56: "shooting",
+        // Sport Shooting bits, set here for sport_bits alignment
+        58: "winterSport",
+        59: "grinding",
+        // Sailing position, operating manual winches to power boat controls
+        62: "hiit",
+        63: "videoGaming",
+        64: "racket",
+        65: "wheelchairPushWalk",
+        66: "wheelchairPushRun",
+        67: "meditation",
+        68: "paraSport",
+        69: "discGolf",
+        70: "teamSport",
+        71: "cricket",
+        72: "rugby",
+        73: "hockey",
+        74: "lacrosse",
+        75: "volleyball",
+        76: "waterTubing",
+        77: "wakesurfing",
+        78: "waterSport",
+        79: "archery",
+        80: "mixedMartialArts",
+        81: "motorSports",
+        82: "snorkeling",
+        83: "dance",
+        84: "jumpRope",
+        85: "poolApnea",
+        86: "mobility",
+        87: "geocaching",
+        88: "canoeing",
+        254: "all"
+        // All is for goals only to include all sports.
+      },
+      sportBits0: {
+        1: "generic",
+        2: "running",
+        4: "cycling",
+        8: "transition",
+        // Mulitsport transition
+        16: "fitnessEquipment",
+        32: "swimming",
+        64: "basketball",
+        128: "soccer"
+      },
+      sportBits1: {
+        1: "tennis",
+        2: "americanFootball",
+        4: "training",
+        8: "walking",
+        16: "crossCountrySkiing",
+        32: "alpineSkiing",
+        64: "snowboarding",
+        128: "rowing"
+      },
+      sportBits2: {
+        1: "mountaineering",
+        2: "hiking",
+        4: "multisport",
+        8: "paddling",
+        16: "flying",
+        32: "eBiking",
+        64: "motorcycling",
+        128: "boating"
+      },
+      sportBits3: {
+        1: "driving",
+        2: "golf",
+        4: "hangGliding",
+        8: "horsebackRiding",
+        16: "hunting",
+        32: "fishing",
+        64: "inlineSkating",
+        128: "rockClimbing"
+      },
+      sportBits4: {
+        1: "sailing",
+        2: "iceSkating",
+        4: "skyDiving",
+        8: "snowshoeing",
+        16: "snowmobiling",
+        32: "standUpPaddleboarding",
+        64: "surfing",
+        128: "wakeboarding"
+      },
+      sportBits5: {
+        1: "waterSkiing",
+        2: "kayaking",
+        4: "rafting",
+        8: "windsurfing",
+        16: "kitesurfing",
+        32: "tactical",
+        64: "jumpmaster",
+        128: "boxing"
+      },
+      sportBits6: {
+        1: "floorClimbing"
+      },
+      subSport: {
+        0: "generic",
+        1: "treadmill",
+        // Run/Fitness Equipment
+        2: "street",
+        // Run
+        3: "trail",
+        // Run
+        4: "track",
+        // Run
+        5: "spin",
+        // Cycling
+        6: "indoorCycling",
+        // Cycling/Fitness Equipment
+        7: "road",
+        // Cycling
+        8: "mountain",
+        // Cycling
+        9: "downhill",
+        // Cycling
+        10: "recumbent",
+        // Cycling
+        11: "cyclocross",
+        // Cycling
+        12: "handCycling",
+        // Cycling
+        13: "trackCycling",
+        // Cycling
+        14: "indoorRowing",
+        // Fitness Equipment
+        15: "elliptical",
+        // Fitness Equipment
+        16: "stairClimbing",
+        // Fitness Equipment
+        17: "lapSwimming",
+        // Swimming
+        18: "openWater",
+        // Swimming
+        19: "flexibilityTraining",
+        // Training
+        20: "strengthTraining",
+        // Training
+        21: "warmUp",
+        // Tennis
+        22: "match",
+        // Tennis
+        23: "exercise",
+        // Tennis
+        24: "challenge",
+        25: "indoorSkiing",
+        // Fitness Equipment
+        26: "cardioTraining",
+        // Training
+        27: "indoorWalking",
+        // Walking/Fitness Equipment
+        28: "eBikeFitness",
+        // E-Biking
+        29: "bmx",
+        // Cycling
+        30: "casualWalking",
+        // Walking
+        31: "speedWalking",
+        // Walking
+        32: "bikeToRunTransition",
+        // Transition
+        33: "runToBikeTransition",
+        // Transition
+        34: "swimToBikeTransition",
+        // Transition
+        35: "atv",
+        // Motorcycling
+        36: "motocross",
+        // Motorcycling
+        37: "backcountry",
+        // Alpine Skiing/Snowboarding
+        38: "resort",
+        // Alpine Skiing/Snowboarding
+        39: "rcDrone",
+        // Flying
+        40: "wingsuit",
+        // Flying
+        41: "whitewater",
+        // Kayaking/Rafting
+        42: "skateSkiing",
+        // Cross Country Skiing
+        43: "yoga",
+        // Training
+        44: "pilates",
+        // Fitness Equipment
+        45: "indoorRunning",
+        // Run
+        46: "gravelCycling",
+        // Cycling
+        47: "eBikeMountain",
+        // Cycling
+        48: "commuting",
+        // Cycling
+        49: "mixedSurface",
+        // Cycling
+        50: "navigate",
+        51: "trackMe",
+        52: "map",
+        53: "singleGasDiving",
+        // Diving
+        54: "multiGasDiving",
+        // Diving
+        55: "gaugeDiving",
+        // Diving
+        56: "apneaDiving",
+        // Diving
+        57: "apneaHunting",
+        // Diving
+        58: "virtualActivity",
+        59: "obstacle",
+        // Used for events where participants run, crawl through mud, climb over walls, etc.
+        62: "breathing",
+        63: "ccrDiving",
+        // Diving w/ closed circuit rebreather
+        65: "sailRace",
+        // Sailing
+        66: "expedition",
+        // Generic
+        67: "ultra",
+        // Ultramarathon
+        68: "indoorClimbing",
+        // Climbing
+        69: "bouldering",
+        // Climbing
+        70: "hiit",
+        // High Intensity Interval Training
+        71: "indoorGrinding",
+        // Sailing position, operating manual winches to power boat controls
+        72: "huntingWithDogs",
+        // Hunting
+        73: "amrap",
+        // HIIT
+        74: "emom",
+        // HIIT
+        75: "tabata",
+        // HIIT
+        77: "esport",
+        // Video Gaming, Cycling, etc.
+        78: "triathlon",
+        // Multisport
+        79: "duathlon",
+        // Multisport
+        80: "brick",
+        // Multisport
+        81: "swimRun",
+        // Multisport
+        82: "adventureRace",
+        // Multisport/Running
+        83: "truckerWorkout",
+        // DEZL trucker workout training sport
+        84: "pickleball",
+        // Racket
+        85: "padel",
+        // Racket
+        86: "indoorWheelchairWalk",
+        87: "indoorWheelchairRun",
+        88: "indoorHandCycling",
+        90: "field",
+        // Hockey
+        91: "ice",
+        // Hockey
+        92: "ultimate",
+        // Disc
+        93: "platform",
+        // Racket
+        94: "squash",
+        // Racket
+        95: "badminton",
+        // Racket
+        96: "racquetball",
+        // Racket
+        97: "tableTennis",
+        // Racket
+        98: "overland",
+        99: "trollingMotor",
+        // Generic
+        110: "flyCanopy",
+        // Flying
+        111: "flyParaglide",
+        // Flying
+        112: "flyParamotor",
+        // Flying
+        113: "flyPressurized",
+        // Flying
+        114: "flyNavigate",
+        // Flying
+        115: "flyTimer",
+        // Flying
+        116: "flyAltimeter",
+        // Flying
+        117: "flyWx",
+        // Flying
+        118: "flyVfr",
+        // Flying
+        119: "flyIfr",
+        // Flying
+        121: "dynamicApnea",
+        123: "enduro",
+        // Cycling
+        124: "rucking",
+        // Hiking
+        125: "rally",
+        // Motor sports
+        126: "poolTriathlon",
+        // Multisport
+        127: "eBikeEnduro",
+        // Cycling
+        254: "all"
+      },
+      sportEvent: {
+        0: "uncategorized",
+        1: "geocaching",
+        2: "fitness",
+        3: "recreation",
+        4: "race",
+        5: "specialEvent",
+        6: "training",
+        7: "transportation",
+        8: "touring"
+      },
+      activity: {
+        0: "manual",
+        1: "autoMultiSport"
+      },
+      intensity: {
+        0: "active",
+        1: "rest",
+        2: "warmup",
+        3: "cooldown",
+        4: "recovery",
+        5: "interval",
+        6: "other"
+      },
+      sessionTrigger: {
+        0: "activityEnd",
+        1: "manual",
+        // User changed sport.
+        2: "autoMultiSport",
+        // Auto multi-sport feature is enabled and user pressed lap button to advance session.
+        3: "fitnessEquipment"
+        // Auto sport change caused by user linking to fitness equipment.
+      },
+      autolapTrigger: {
+        0: "time",
+        1: "distance",
+        2: "positionStart",
+        3: "positionLap",
+        4: "positionWaypoint",
+        5: "positionMarked",
+        6: "off",
+        13: "autoSelect"
+      },
+      lapTrigger: {
+        0: "manual",
+        1: "time",
+        2: "distance",
+        3: "positionStart",
+        4: "positionLap",
+        5: "positionWaypoint",
+        6: "positionMarked",
+        7: "sessionEnd",
+        8: "fitnessEquipment"
+      },
+      timeMode: {
+        0: "hour12",
+        1: "hour24",
+        // Does not use a leading zero and has a colon
+        2: "military",
+        // Uses a leading zero and does not have a colon
+        3: "hour12WithSeconds",
+        4: "hour24WithSeconds",
+        5: "utc"
+      },
+      backlightMode: {
+        0: "off",
+        1: "manual",
+        2: "keyAndMessages",
+        3: "autoBrightness",
+        4: "smartNotifications",
+        5: "keyAndMessagesNight",
+        6: "keyAndMessagesAndSmartNotifications"
+      },
+      dateMode: {
+        0: "dayMonth",
+        1: "monthDay"
+      },
+      backlightTimeout: {
+        0: "infinite"
+        // Backlight stays on forever.
+      },
+      event: {
+        0: "timer",
+        // Group 0. Start / stop_all
+        3: "workout",
+        // start / stop
+        4: "workoutStep",
+        // Start at beginning of workout. Stop at end of each step.
+        5: "powerDown",
+        // stop_all group 0
+        6: "powerUp",
+        // stop_all group 0
+        7: "offCourse",
+        // start / stop group 0
+        8: "session",
+        // Stop at end of each session.
+        9: "lap",
+        // Stop at end of each lap.
+        10: "coursePoint",
+        // marker
+        11: "battery",
+        // marker
+        12: "virtualPartnerPace",
+        // Group 1. Start at beginning of activity if VP enabled, when VP pace is changed during activity or VP enabled mid activity. stop_disable when VP disabled.
+        13: "hrHighAlert",
+        // Group 0. Start / stop when in alert condition.
+        14: "hrLowAlert",
+        // Group 0. Start / stop when in alert condition.
+        15: "speedHighAlert",
+        // Group 0. Start / stop when in alert condition.
+        16: "speedLowAlert",
+        // Group 0. Start / stop when in alert condition.
+        17: "cadHighAlert",
+        // Group 0. Start / stop when in alert condition.
+        18: "cadLowAlert",
+        // Group 0. Start / stop when in alert condition.
+        19: "powerHighAlert",
+        // Group 0. Start / stop when in alert condition.
+        20: "powerLowAlert",
+        // Group 0. Start / stop when in alert condition.
+        21: "recoveryHr",
+        // marker
+        22: "batteryLow",
+        // marker
+        23: "timeDurationAlert",
+        // Group 1. Start if enabled mid activity (not required at start of activity). Stop when duration is reached. stop_disable if disabled.
+        24: "distanceDurationAlert",
+        // Group 1. Start if enabled mid activity (not required at start of activity). Stop when duration is reached. stop_disable if disabled.
+        25: "calorieDurationAlert",
+        // Group 1. Start if enabled mid activity (not required at start of activity). Stop when duration is reached. stop_disable if disabled.
+        26: "activity",
+        // Group 1.. Stop at end of activity.
+        27: "fitnessEquipment",
+        // marker
+        28: "length",
+        // Stop at end of each length.
+        32: "userMarker",
+        // marker
+        33: "sportPoint",
+        // marker
+        36: "calibration",
+        // start/stop/marker
+        42: "frontGearChange",
+        // marker
+        43: "rearGearChange",
+        // marker
+        44: "riderPositionChange",
+        // marker
+        45: "elevHighAlert",
+        // Group 0. Start / stop when in alert condition.
+        46: "elevLowAlert",
+        // Group 0. Start / stop when in alert condition.
+        47: "commTimeout",
+        // marker
+        54: "autoActivityDetect",
+        // marker
+        56: "diveAlert",
+        // marker
+        57: "diveGasSwitched",
+        // marker
+        71: "tankPressureReserve",
+        // marker
+        72: "tankPressureCritical",
+        // marker
+        73: "tankLost",
+        // marker
+        75: "radarThreatAlert",
+        // start/stop/marker
+        76: "tankBatteryLow",
+        // marker
+        81: "tankPodConnected",
+        // marker - tank pod has connected
+        82: "tankPodDisconnected"
+        // marker - tank pod has lost connection
+      },
+      eventType: {
+        0: "start",
+        1: "stop",
+        2: "consecutiveDepreciated",
+        3: "marker",
+        4: "stopAll",
+        5: "beginDepreciated",
+        6: "endDepreciated",
+        7: "endAllDepreciated",
+        8: "stopDisable",
+        9: "stopDisableAll"
+      },
+      timerTrigger: {
+        0: "manual",
+        1: "auto",
+        2: "fitnessEquipment"
+      },
+      fitnessEquipmentState: {
+        0: "ready",
+        1: "inUse",
+        2: "paused",
+        3: "unknown"
+        // lost connection to fitness equipment
+      },
+      tone: {
+        0: "off",
+        1: "tone",
+        2: "vibrate",
+        3: "toneAndVibrate"
+      },
+      autoscroll: {
+        0: "none",
+        1: "slow",
+        2: "medium",
+        3: "fast"
+      },
+      activityClass: {
+        127: "level",
+        // 0 to 100
+        100: "levelMax",
+        128: "athlete"
+      },
+      hrZoneCalc: {
+        0: "custom",
+        1: "percentMaxHr",
+        2: "percentHrr",
+        3: "percentLthr"
+      },
+      pwrZoneCalc: {
+        0: "custom",
+        1: "percentFtp"
+      },
+      wktStepDuration: {
+        0: "time",
+        1: "distance",
+        2: "hrLessThan",
+        3: "hrGreaterThan",
+        4: "calories",
+        5: "open",
+        6: "repeatUntilStepsCmplt",
+        7: "repeatUntilTime",
+        8: "repeatUntilDistance",
+        9: "repeatUntilCalories",
+        10: "repeatUntilHrLessThan",
+        11: "repeatUntilHrGreaterThan",
+        12: "repeatUntilPowerLessThan",
+        13: "repeatUntilPowerGreaterThan",
+        14: "powerLessThan",
+        15: "powerGreaterThan",
+        16: "trainingPeaksTss",
+        17: "repeatUntilPowerLastLapLessThan",
+        18: "repeatUntilMaxPowerLastLapLessThan",
+        19: "power3sLessThan",
+        20: "power10sLessThan",
+        21: "power30sLessThan",
+        22: "power3sGreaterThan",
+        23: "power10sGreaterThan",
+        24: "power30sGreaterThan",
+        25: "powerLapLessThan",
+        26: "powerLapGreaterThan",
+        27: "repeatUntilTrainingPeaksTss",
+        28: "repetitionTime",
+        29: "reps",
+        31: "timeOnly"
+      },
+      wktStepTarget: {
+        0: "speed",
+        1: "heartRate",
+        2: "open",
+        3: "cadence",
+        4: "power",
+        5: "grade",
+        6: "resistance",
+        7: "power3s",
+        8: "power10s",
+        9: "power30s",
+        10: "powerLap",
+        11: "swimStroke",
+        12: "speedLap",
+        13: "heartRateLap"
+      },
+      goal: {
+        0: "time",
+        1: "distance",
+        2: "calories",
+        3: "frequency",
+        4: "steps",
+        5: "ascent",
+        6: "activeMinutes"
+      },
+      goalRecurrence: {
+        0: "off",
+        1: "daily",
+        2: "weekly",
+        3: "monthly",
+        4: "yearly",
+        5: "custom"
+      },
+      goalSource: {
+        0: "auto",
+        // Device generated
+        1: "community",
+        // Social network sourced goal
+        2: "user"
+        // Manually generated
+      },
+      schedule: {
+        0: "workout",
+        1: "course"
+      },
+      coursePoint: {
+        0: "generic",
+        1: "summit",
+        2: "valley",
+        3: "water",
+        4: "food",
+        5: "danger",
+        6: "left",
+        7: "right",
+        8: "straight",
+        9: "firstAid",
+        10: "fourthCategory",
+        11: "thirdCategory",
+        12: "secondCategory",
+        13: "firstCategory",
+        14: "horsCategory",
+        15: "sprint",
+        16: "leftFork",
+        17: "rightFork",
+        18: "middleFork",
+        19: "slightLeft",
+        20: "sharpLeft",
+        21: "slightRight",
+        22: "sharpRight",
+        23: "uTurn",
+        24: "segmentStart",
+        25: "segmentEnd",
+        27: "campsite",
+        28: "aidStation",
+        29: "restArea",
+        30: "generalDistance",
+        // Used with UpAhead
+        31: "service",
+        32: "energyGel",
+        33: "sportsDrink",
+        34: "mileMarker",
+        35: "checkpoint",
+        36: "shelter",
+        37: "meetingSpot",
+        38: "overlook",
+        39: "toilet",
+        40: "shower",
+        41: "gear",
+        42: "sharpCurve",
+        43: "steepIncline",
+        44: "tunnel",
+        45: "bridge",
+        46: "obstacle",
+        47: "crossing",
+        48: "store",
+        49: "transition",
+        50: "navaid",
+        51: "transport",
+        52: "alert",
+        53: "info"
+      },
+      manufacturer: {
+        1: "garmin",
+        2: "garminFr405Antfs",
+        // Do not use. Used by FR405 for ANTFS man id.
+        3: "zephyr",
+        4: "dayton",
+        5: "idt",
+        6: "srm",
+        7: "quarq",
+        8: "ibike",
+        9: "saris",
+        10: "sparkHk",
+        11: "tanita",
+        12: "echowell",
+        13: "dynastreamOem",
+        14: "nautilus",
+        15: "dynastream",
+        16: "timex",
+        17: "metrigear",
+        18: "xelic",
+        19: "beurer",
+        20: "cardiosport",
+        21: "aAndD",
+        22: "hmm",
+        23: "suunto",
+        24: "thitaElektronik",
+        25: "gpulse",
+        26: "cleanMobile",
+        27: "pedalBrain",
+        28: "peaksware",
+        29: "saxonar",
+        30: "lemondFitness",
+        31: "dexcom",
+        32: "wahooFitness",
+        33: "octaneFitness",
+        34: "archinoetics",
+        35: "theHurtBox",
+        36: "citizenSystems",
+        37: "magellan",
+        38: "osynce",
+        39: "holux",
+        40: "concept2",
+        41: "shimano",
+        42: "oneGiantLeap",
+        43: "aceSensor",
+        44: "brimBrothers",
+        45: "xplova",
+        46: "perceptionDigital",
+        47: "bf1systems",
+        48: "pioneer",
+        49: "spantec",
+        50: "metalogics",
+        51: "4iiiis",
+        52: "seikoEpson",
+        53: "seikoEpsonOem",
+        54: "iforPowell",
+        55: "maxwellGuider",
+        56: "starTrac",
+        57: "breakaway",
+        58: "alatechTechnologyLtd",
+        59: "mioTechnologyEurope",
+        60: "rotor",
+        61: "geonaute",
+        62: "idBike",
+        63: "specialized",
+        64: "wtek",
+        65: "physicalEnterprises",
+        66: "northPoleEngineering",
+        67: "bkool",
+        68: "cateye",
+        69: "stagesCycling",
+        70: "sigmasport",
+        71: "tomtom",
+        72: "peripedal",
+        73: "wattbike",
+        76: "moxy",
+        77: "ciclosport",
+        78: "powerbahn",
+        79: "acornProjectsAps",
+        80: "lifebeam",
+        81: "bontrager",
+        82: "wellgo",
+        83: "scosche",
+        84: "magura",
+        85: "woodway",
+        86: "elite",
+        87: "nielsenKellerman",
+        88: "dkCity",
+        89: "tacx",
+        90: "directionTechnology",
+        91: "magtonic",
+        92: "1partcarbon",
+        93: "insideRideTechnologies",
+        94: "soundOfMotion",
+        95: "stryd",
+        96: "icg",
+        // Indoorcycling Group
+        97: "miPulse",
+        98: "bsxAthletics",
+        99: "look",
+        100: "campagnoloSrl",
+        101: "bodyBikeSmart",
+        102: "praxisworks",
+        103: "limitsTechnology",
+        // Limits Technology Ltd.
+        104: "topactionTechnology",
+        // TopAction Technology Inc.
+        105: "cosinuss",
+        106: "fitcare",
+        107: "magene",
+        108: "giantManufacturingCo",
+        109: "tigrasport",
+        // Tigrasport
+        110: "salutron",
+        111: "technogym",
+        112: "brytonSensors",
+        113: "latitudeLimited",
+        114: "soaringTechnology",
+        115: "igpsport",
+        116: "thinkrider",
+        117: "gopherSport",
+        118: "waterrower",
+        119: "orangetheory",
+        120: "inpeak",
+        121: "kinetic",
+        122: "johnsonHealthTech",
+        123: "polarElectro",
+        124: "seesense",
+        125: "nciTechnology",
+        126: "iqsquare",
+        127: "leomo",
+        128: "ifitCom",
+        129: "corosByte",
+        130: "versaDesign",
+        131: "chileaf",
+        132: "cycplus",
+        133: "gravaaByte",
+        134: "sigeyi",
+        135: "coospo",
+        136: "geoid",
+        137: "bosch",
+        138: "kyto",
+        139: "kineticSports",
+        140: "decathlonByte",
+        141: "tqSystems",
+        142: "tagHeuer",
+        143: "keiserFitness",
+        144: "zwiftByte",
+        145: "porscheEp",
+        146: "blackbird",
+        147: "meilanByte",
+        148: "ezon",
+        149: "laisi",
+        150: "myzone",
+        151: "abawo",
+        152: "bafang",
+        153: "luhongTechnology",
+        255: "development",
+        257: "healthandlife",
+        258: "lezyne",
+        259: "scribeLabs",
+        260: "zwift",
+        261: "watteam",
+        262: "recon",
+        263: "faveroElectronics",
+        264: "dynovelo",
+        265: "strava",
+        266: "precor",
+        // Amer Sports
+        267: "bryton",
+        268: "sram",
+        269: "navman",
+        // MiTAC Global Corporation (Mio Technology)
+        270: "cobi",
+        // COBI GmbH
+        271: "spivi",
+        272: "mioMagellan",
+        273: "evesports",
+        274: "sensitivusGauge",
+        275: "podoon",
+        276: "lifeTimeFitness",
+        277: "falcoEMotors",
+        // Falco eMotors Inc.
+        278: "minoura",
+        279: "cycliq",
+        280: "luxottica",
+        281: "trainerRoad",
+        282: "theSufferfest",
+        283: "fullspeedahead",
+        284: "virtualtraining",
+        285: "feedbacksports",
+        286: "omata",
+        287: "vdo",
+        288: "magneticdays",
+        289: "hammerhead",
+        290: "kineticByKurt",
+        291: "shapelog",
+        292: "dabuziduo",
+        293: "jetblack",
+        294: "coros",
+        295: "virtugo",
+        296: "velosense",
+        297: "cycligentinc",
+        298: "trailforks",
+        299: "mahleEbikemotion",
+        300: "nurvv",
+        301: "microprogram",
+        302: "zone5cloud",
+        303: "greenteg",
+        304: "yamahaMotors",
+        305: "whoop",
+        306: "gravaa",
+        307: "onelap",
+        308: "monarkExercise",
+        309: "form",
+        310: "decathlon",
+        311: "syncros",
+        312: "heatup",
+        313: "cannondale",
+        314: "trueFitness",
+        315: "rGTCycling",
+        316: "vasa",
+        317: "raceRepublic",
+        318: "fazua",
+        319: "orekaTraining",
+        320: "lsec",
+        // Lishun Electric & Communication
+        321: "lululemonStudio",
+        322: "shanyue",
+        323: "spinningMda",
+        324: "hilldating",
+        325: "aeroSensor",
+        326: "nike",
+        327: "magicshine",
+        328: "ictrainer",
+        329: "absoluteCycling",
+        330: "eoSwimbetter",
+        331: "mywhoosh",
+        332: "ravemen",
+        333: "tektroRacingProducts",
+        334: "daradInnovationCorporation",
+        335: "cycloptim",
+        337: "runna",
+        339: "zepp",
+        340: "peloton",
+        341: "carv",
+        342: "tissot",
+        345: "realVelo",
+        346: "wetech",
+        347: "jespr",
+        348: "huawei",
+        349: "gotoes",
+        350: "cadenceApp",
+        351: "unaWatch",
+        5759: "actigraphcorp"
+      },
+      garminProduct: {
+        1: "hrm1",
+        2: "axh01",
+        // AXH01 HRM chipset
+        3: "axb01",
+        4: "axb02",
+        5: "hrm2ss",
+        6: "dsiAlf02",
+        7: "hrm3ss",
+        8: "hrmRunSingleByteProductId",
+        // hrm_run model for HRM ANT+ messaging
+        9: "bsm",
+        // BSM model for ANT+ messaging
+        10: "bcm",
+        // BCM model for ANT+ messaging
+        11: "axs01",
+        // AXS01 HRM Bike Chipset model for ANT+ messaging
+        12: "hrmTriSingleByteProductId",
+        // hrm_tri model for HRM ANT+ messaging
+        13: "hrm4RunSingleByteProductId",
+        // hrm4 run model for HRM ANT+ messaging
+        14: "fr225SingleByteProductId",
+        // fr225 model for HRM ANT+ messaging
+        15: "gen3BsmSingleByteProductId",
+        // gen3_bsm model for Bike Speed ANT+ messaging
+        16: "gen3BcmSingleByteProductId",
+        // gen3_bcm model for Bike Cadence ANT+ messaging
+        22: "hrmFitSingleByteProductId",
+        255: "oHR",
+        // Garmin Wearable Optical Heart Rate Sensor for ANT+ HR Profile Broadcasting
+        473: "fr301China",
+        474: "fr301Japan",
+        475: "fr301Korea",
+        494: "fr301Taiwan",
+        717: "fr405",
+        // Forerunner 405
+        782: "fr50",
+        // Forerunner 50
+        987: "fr405Japan",
+        988: "fr60",
+        // Forerunner 60
+        1011: "dsiAlf01",
+        1018: "fr310xt",
+        // Forerunner 310
+        1036: "edge500",
+        1124: "fr110",
+        // Forerunner 110
+        1169: "edge800",
+        1199: "edge500Taiwan",
+        1213: "edge500Japan",
+        1253: "chirp",
+        1274: "fr110Japan",
+        1325: "edge200",
+        1328: "fr910xt",
+        1333: "edge800Taiwan",
+        1334: "edge800Japan",
+        1341: "alf04",
+        1345: "fr610",
+        1360: "fr210Japan",
+        1380: "vectorSs",
+        1381: "vectorCp",
+        1386: "edge800China",
+        1387: "edge500China",
+        1405: "approachG10",
+        1410: "fr610Japan",
+        1422: "edge500Korea",
+        1436: "fr70",
+        1446: "fr310xt4t",
+        1461: "amx",
+        1482: "fr10",
+        1497: "edge800Korea",
+        1499: "swim",
+        1537: "fr910xtChina",
+        1551: "fenix",
+        1555: "edge200Taiwan",
+        1561: "edge510",
+        1567: "edge810",
+        1570: "tempe",
+        1600: "fr910xtJapan",
+        1623: "fr620",
+        1632: "fr220",
+        1664: "fr910xtKorea",
+        1688: "fr10Japan",
+        1721: "edge810Japan",
+        1735: "virbElite",
+        1736: "edgeTouring",
+        // Also Edge Touring Plus
+        1742: "edge510Japan",
+        1743: "hrmTri",
+        // Also HRM-Swim
+        1752: "hrmRun",
+        1765: "fr920xt",
+        1821: "edge510Asia",
+        1822: "edge810China",
+        1823: "edge810Taiwan",
+        1836: "edge1000",
+        1837: "vivoFit",
+        1853: "virbRemote",
+        1885: "vivoKi",
+        1903: "fr15",
+        1907: "vivoActive",
+        1918: "edge510Korea",
+        1928: "fr620Japan",
+        1929: "fr620China",
+        1930: "fr220Japan",
+        1931: "fr220China",
+        1936: "approachS6",
+        1956: "vivoSmart",
+        1967: "fenix2",
+        1988: "epix",
+        2050: "fenix3",
+        2052: "edge1000Taiwan",
+        2053: "edge1000Japan",
+        2061: "fr15Japan",
+        2067: "edge520",
+        2070: "edge1000China",
+        2072: "fr620Russia",
+        2073: "fr220Russia",
+        2079: "vectorS",
+        2100: "edge1000Korea",
+        2130: "fr920xtTaiwan",
+        2131: "fr920xtChina",
+        2132: "fr920xtJapan",
+        2134: "virbx",
+        2135: "vivoSmartApac",
+        2140: "etrexTouch",
+        2147: "edge25",
+        2148: "fr25",
+        2150: "vivoFit2",
+        2153: "fr225",
+        2156: "fr630",
+        2157: "fr230",
+        2158: "fr735xt",
+        2160: "vivoActiveApac",
+        2161: "vector2",
+        2162: "vector2s",
+        2172: "virbxe",
+        2173: "fr620Taiwan",
+        2174: "fr220Taiwan",
+        2175: "truswing",
+        2187: "d2airvenu",
+        2188: "fenix3China",
+        2189: "fenix3Twn",
+        2192: "variaHeadlight",
+        2193: "variaTaillightOld",
+        2204: "edgeExplore1000",
+        2219: "fr225Asia",
+        2225: "variaRadarTaillight",
+        2226: "variaRadarDisplay",
+        2238: "edge20",
+        2260: "edge520Asia",
+        2261: "edge520Japan",
+        2262: "d2Bravo",
+        2266: "approachS20",
+        2271: "vivoSmart2",
+        2274: "edge1000Thai",
+        2276: "variaRemote",
+        2288: "edge25Asia",
+        2289: "edge25Jpn",
+        2290: "edge20Asia",
+        2292: "approachX40",
+        2293: "fenix3Japan",
+        2294: "vivoSmartEmea",
+        2310: "fr630Asia",
+        2311: "fr630Jpn",
+        2313: "fr230Jpn",
+        2327: "hrm4Run",
+        2332: "epixJapan",
+        2337: "vivoActiveHr",
+        2347: "vivoSmartGpsHr",
+        2348: "vivoSmartHr",
+        2361: "vivoSmartHrAsia",
+        2362: "vivoSmartGpsHrAsia",
+        2368: "vivoMove",
+        2379: "variaTaillight",
+        2396: "fr235Asia",
+        2397: "fr235Japan",
+        2398: "variaVision",
+        2406: "vivoFit3",
+        2407: "fenix3Korea",
+        2408: "fenix3Sea",
+        2413: "fenix3Hr",
+        2417: "virbUltra30",
+        2429: "indexSmartScale",
+        2431: "fr235",
+        2432: "fenix3Chronos",
+        2441: "oregon7xx",
+        2444: "rino7xx",
+        2457: "epixKorea",
+        2473: "fenix3HrChn",
+        2474: "fenix3HrTwn",
+        2475: "fenix3HrJpn",
+        2476: "fenix3HrSea",
+        2477: "fenix3HrKor",
+        2496: "nautix",
+        2497: "vivoActiveHrApac",
+        2503: "fr35",
+        2512: "oregon7xxWw",
+        2530: "edge820",
+        2531: "edgeExplore820",
+        2533: "fr735xtApac",
+        2534: "fr735xtJapan",
+        2544: "fenix5s",
+        2547: "d2BravoTitanium",
+        2567: "variaUt800",
+        // Varia UT 800 SW
+        2593: "runningDynamicsPod",
+        2599: "edge820China",
+        2600: "edge820Japan",
+        2604: "fenix5x",
+        2606: "vivoFitJr",
+        2622: "vivoSmart3",
+        2623: "vivoSport",
+        2628: "edge820Taiwan",
+        2629: "edge820Korea",
+        2630: "edge820Sea",
+        2650: "fr35Hebrew",
+        2656: "approachS60",
+        2667: "fr35Apac",
+        2668: "fr35Japan",
+        2675: "fenix3ChronosAsia",
+        2687: "virb360",
+        2691: "fr935",
+        2697: "fenix5",
+        2700: "vivoactive3",
+        2733: "fr235ChinaNfc",
+        2769: "foretrex601_701",
+        2772: "vivoMoveHr",
+        2713: "edge1030",
+        2727: "fr35Sea",
+        2787: "vector3",
+        2796: "fenix5Asia",
+        2797: "fenix5sAsia",
+        2798: "fenix5xAsia",
+        2806: "approachZ80",
+        2814: "fr35Korea",
+        2819: "d2charlie",
+        2831: "vivoSmart3Apac",
+        2832: "vivoSportApac",
+        2833: "fr935Asia",
+        2859: "descent",
+        2878: "vivoFit4",
+        2886: "fr645",
+        2888: "fr645m",
+        2891: "fr30",
+        2900: "fenix5sPlus",
+        2909: "edge130",
+        2924: "edge1030Asia",
+        2927: "vivosmart4",
+        2945: "vivoMoveHrAsia",
+        2962: "approachX10",
+        2977: "fr30Asia",
+        2988: "vivoactive3mW",
+        3003: "fr645Asia",
+        3004: "fr645mAsia",
+        3011: "edgeExplore",
+        3028: "gpsmap66",
+        3049: "approachS10",
+        3066: "vivoactive3mL",
+        3076: "fr245",
+        3077: "fr245Music",
+        3085: "approachG80",
+        3092: "edge130Asia",
+        3095: "edge1030Bontrager",
+        3110: "fenix5Plus",
+        3111: "fenix5xPlus",
+        3112: "edge520Plus",
+        3113: "fr945",
+        3121: "edge530",
+        3122: "edge830",
+        3126: "instinctEsports",
+        3134: "fenix5sPlusApac",
+        3135: "fenix5xPlusApac",
+        3142: "edge520PlusApac",
+        3143: "descentT1",
+        3144: "fr235lAsia",
+        3145: "fr245Asia",
+        3163: "vivoActive3mApac",
+        3192: "gen3Bsm",
+        // gen3 bike speed sensor
+        3193: "gen3Bcm",
+        // gen3 bike cadence sensor
+        3218: "vivoSmart4Asia",
+        3224: "vivoactive4Small",
+        3225: "vivoactive4Large",
+        3226: "venu",
+        3246: "marqDriver",
+        3247: "marqAviator",
+        3248: "marqCaptain",
+        3249: "marqCommander",
+        3250: "marqExpedition",
+        3251: "marqAthlete",
+        3258: "descentMk2",
+        3282: "fr45",
+        3284: "gpsmap66i",
+        3287: "fenix6SSport",
+        3288: "fenix6S",
+        3289: "fenix6Sport",
+        3290: "fenix6",
+        3291: "fenix6x",
+        3299: "hrmDual",
+        // HRM-Dual
+        3300: "hrmPro",
+        // HRM-Pro
+        3308: "vivoMove3Premium",
+        3314: "approachS40",
+        3321: "fr245mAsia",
+        3349: "edge530Apac",
+        3350: "edge830Apac",
+        3378: "vivoMove3",
+        3387: "vivoActive4SmallAsia",
+        3388: "vivoActive4LargeAsia",
+        3389: "vivoActive4OledAsia",
+        3405: "swim2",
+        3420: "marqDriverAsia",
+        3421: "marqAviatorAsia",
+        3422: "vivoMove3Asia",
+        3441: "fr945Asia",
+        3446: "vivoActive3tChn",
+        3448: "marqCaptainAsia",
+        3449: "marqCommanderAsia",
+        3450: "marqExpeditionAsia",
+        3451: "marqAthleteAsia",
+        3461: "indexSmartScale2",
+        3466: "instinctSolar",
+        3469: "fr45Asia",
+        3473: "vivoactive3Daimler",
+        3498: "legacyRey",
+        3499: "legacyDarthVader",
+        3500: "legacyCaptainMarvel",
+        3501: "legacyFirstAvenger",
+        3512: "fenix6sSportAsia",
+        3513: "fenix6sAsia",
+        3514: "fenix6SportAsia",
+        3515: "fenix6Asia",
+        3516: "fenix6xAsia",
+        3535: "legacyCaptainMarvelAsia",
+        3536: "legacyFirstAvengerAsia",
+        3537: "legacyReyAsia",
+        3538: "legacyDarthVaderAsia",
+        3542: "descentMk2s",
+        3558: "edge130Plus",
+        3570: "edge1030Plus",
+        3578: "rally200",
+        // Rally 100/200 Power Meter Series
+        3589: "fr745",
+        3596: "venusqMusic",
+        3599: "venusqMusicV2",
+        3600: "venusq",
+        3615: "lily",
+        3624: "marqAdventurer",
+        3638: "enduro",
+        3639: "swim2Apac",
+        3648: "marqAdventurerAsia",
+        3652: "fr945Lte",
+        3702: "descentMk2Asia",
+        // Mk2 and Mk2i
+        3703: "venu2",
+        3704: "venu2s",
+        3737: "venuDaimlerAsia",
+        3739: "marqGolfer",
+        3740: "venuDaimler",
+        3794: "fr745Asia",
+        3808: "variaRct715",
+        3809: "lilyAsia",
+        3812: "edge1030PlusAsia",
+        3813: "edge130PlusAsia",
+        3823: "approachS12",
+        3872: "enduroAsia",
+        3837: "venusqAsia",
+        3843: "edge1040",
+        3850: "marqGolferAsia",
+        3851: "venu2Plus",
+        3865: "gnss",
+        // Airoha AG3335M Family
+        3869: "fr55",
+        3888: "instinct2",
+        3889: "instinct2s",
+        3905: "fenix7s",
+        3906: "fenix7",
+        3907: "fenix7x",
+        3908: "fenix7sApac",
+        3909: "fenix7Apac",
+        3910: "fenix7xApac",
+        3927: "approachG12",
+        3930: "descentMk2sAsia",
+        3934: "approachS42",
+        3943: "epixGen2",
+        3944: "epixGen2Apac",
+        3949: "venu2sAsia",
+        3950: "venu2Asia",
+        3978: "fr945LteAsia",
+        3982: "vivoMoveSport",
+        3983: "vivomoveTrend",
+        3986: "approachS12Asia",
+        3990: "fr255Music",
+        3991: "fr255SmallMusic",
+        3992: "fr255",
+        3993: "fr255Small",
+        4001: "approachG12Asia",
+        4002: "approachS42Asia",
+        4005: "descentG1",
+        4017: "venu2PlusAsia",
+        4024: "fr955",
+        4033: "fr55Asia",
+        4061: "edge540",
+        4062: "edge840",
+        4063: "vivosmart5",
+        4071: "instinct2Asia",
+        4105: "marqGen2",
+        // Adventurer, Athlete, Captain, Golfer
+        4115: "venusq2",
+        4116: "venusq2music",
+        4124: "marqGen2Aviator",
+        4125: "d2AirX10",
+        4130: "hrmProPlus",
+        4132: "descentG1Asia",
+        4135: "tactix7",
+        4155: "instinctCrossover",
+        4169: "edgeExplore2",
+        4222: "descentMk3",
+        4223: "descentMk3i",
+        4233: "approachS70",
+        4257: "fr265Large",
+        4258: "fr265Small",
+        4260: "venu3",
+        4261: "venu3s",
+        4265: "tacxNeoSmart",
+        // Neo Smart, Tacx
+        4266: "tacxNeo2Smart",
+        // Neo 2 Smart, Tacx
+        4267: "tacxNeo2TSmart",
+        // Neo 2T Smart, Tacx
+        4268: "tacxNeoSmartBike",
+        // Neo Smart Bike, Tacx
+        4269: "tacxSatoriSmart",
+        // Satori Smart, Tacx
+        4270: "tacxFlowSmart",
+        // Flow Smart, Tacx
+        4271: "tacxVortexSmart",
+        // Vortex Smart, Tacx
+        4272: "tacxBushidoSmart",
+        // Bushido Smart, Tacx
+        4273: "tacxGeniusSmart",
+        // Genius Smart, Tacx
+        4274: "tacxFluxFluxSSmart",
+        // Flux/Flux S Smart, Tacx
+        4275: "tacxFlux2Smart",
+        // Flux 2 Smart, Tacx
+        4276: "tacxMagnum",
+        // Magnum, Tacx
+        4305: "edge1040Asia",
+        4312: "epixGen2Pro42",
+        4313: "epixGen2Pro47",
+        4314: "epixGen2Pro51",
+        4315: "fr965",
+        4341: "enduro2",
+        4374: "fenix7sProSolar",
+        4375: "fenix7ProSolar",
+        4376: "fenix7xProSolar",
+        4380: "lily2",
+        4394: "instinct2x",
+        4426: "vivoactive5",
+        4432: "fr165",
+        4433: "fr165Music",
+        4440: "edge1050",
+        4442: "descentT2",
+        4446: "hrmFit",
+        4472: "marqGen2Commander",
+        4477: "lilyAthlete",
+        // aka the Lily 2 Active
+        4525: "rallyX10",
+        // Rally 110/210
+        4532: "fenix8Solar",
+        4533: "fenix8SolarLarge",
+        4534: "fenix8Small",
+        4536: "fenix8",
+        4556: "d2Mach1Pro",
+        4575: "enduro3",
+        4583: "instinctE40mm",
+        4584: "instinctE45mm",
+        4585: "instinct3Solar45mm",
+        4586: "instinct3Amoled45mm",
+        4587: "instinct3Amoled50mm",
+        4588: "descentG2",
+        4595: "fenix7ProSolarNoWifi",
+        4603: "venuX1",
+        4606: "hrm200",
+        4625: "vivoactive6",
+        4631: "fenix8Pro",
+        4633: "edge550",
+        4634: "edge850",
+        4643: "venu4",
+        4644: "venu4s",
+        4647: "approachS44",
+        4655: "edgeMtb",
+        4656: "approachS50",
+        4666: "fenixE",
+        4745: "bounce2",
+        4759: "instinct3Solar50mm",
+        4775: "tactix8Amoled",
+        4776: "tactix8Solar",
+        4814: "fr170Music",
+        4815: "fr170",
+        4825: "approachJ1",
+        4879: "d2Mach2",
+        4916: "fr702026",
+        4678: "instinctCrossoverAmoled",
+        4944: "d2AirX15",
+        5019: "cirqaSmartBand",
+        5056: "d2Mach2Pro",
+        10007: "sdm4",
+        // SDM4 footpod
+        10014: "edgeRemote",
+        20533: "tacxTrainingAppWin",
+        20534: "tacxTrainingAppMac",
+        20565: "tacxTrainingAppMacCatalyst",
+        20119: "trainingCenter",
+        30045: "tacxTrainingAppAndroid",
+        30046: "tacxTrainingAppIos",
+        30047: "tacxTrainingAppLegacy",
+        65531: "connectiqSimulator",
+        65532: "androidAntplusPlugin",
+        65534: "connect"
+        // Garmin Connect website
+      },
+      antplusDeviceType: {
+        1: "antfs",
+        11: "bikePower",
+        12: "environmentSensorLegacy",
+        15: "multiSportSpeedDistance",
+        16: "control",
+        17: "fitnessEquipment",
+        18: "bloodPressure",
+        19: "geocacheNode",
+        20: "lightElectricVehicle",
+        25: "envSensor",
+        26: "racquet",
+        27: "controlHub",
+        31: "muscleOxygen",
+        34: "shifting",
+        35: "bikeLightMain",
+        36: "bikeLightShared",
+        38: "exd",
+        40: "bikeRadar",
+        46: "bikeAero",
+        119: "weightScale",
+        120: "heartRate",
+        121: "bikeSpeedCadence",
+        122: "bikeCadence",
+        123: "bikeSpeed",
+        124: "strideSpeedDistance"
+      },
+      antNetwork: {
+        0: "public",
+        1: "antplus",
+        2: "antfs",
+        3: "private"
+      },
+      workoutCapabilities: {
+        1: "interval",
+        2: "custom",
+        4: "fitnessEquipment",
+        8: "firstbeat",
+        16: "newLeaf",
+        32: "tcx",
+        // For backwards compatibility. Watch should add missing id fields then clear flag.
+        128: "speed",
+        // Speed source required for workout step.
+        256: "heartRate",
+        // Heart rate source required for workout step.
+        512: "distance",
+        // Distance source required for workout step.
+        1024: "cadence",
+        // Cadence source required for workout step.
+        2048: "power",
+        // Power source required for workout step.
+        4096: "grade",
+        // Grade source required for workout step.
+        8192: "resistance",
+        // Resistance source required for workout step.
+        16384: "protected"
+      },
+      batteryStatus: {
+        1: "new",
+        2: "good",
+        3: "ok",
+        4: "low",
+        5: "critical",
+        6: "charging",
+        7: "unknown"
+      },
+      hrType: {
+        0: "normal",
+        1: "irregular"
+      },
+      courseCapabilities: {
+        1: "processed",
+        2: "valid",
+        4: "time",
+        8: "distance",
+        16: "position",
+        32: "heartRate",
+        64: "power",
+        128: "cadence",
+        256: "training",
+        512: "navigation",
+        1024: "bikeway",
+        4096: "aviation"
+        // Denote course files to be used as flight plans
+      },
+      weight: {
+        65534: "calculating"
+      },
+      workoutHr: {
+        100: "bpmOffset"
+      },
+      workoutPower: {
+        1e3: "wattsOffset"
+      },
+      bpStatus: {
+        0: "noError",
+        1: "errorIncompleteData",
+        2: "errorNoMeasurement",
+        3: "errorDataOutOfRange",
+        4: "errorIrregularHeartRate"
+      },
+      userLocalId: {
+        0: "localMin",
+        15: "localMax",
+        16: "stationaryMin",
+        255: "stationaryMax",
+        256: "portableMin",
+        65534: "portableMax"
+      },
+      swimStroke: {
+        0: "freestyle",
+        1: "backstroke",
+        2: "breaststroke",
+        3: "butterfly",
+        4: "drill",
+        5: "mixed",
+        6: "im",
+        // IM is a mixed interval containing the same number of lengths for each of: Butterfly, Backstroke, Breaststroke, Freestyle, swam in that order.
+        7: "imByRound",
+        // For repeated workout steps, a new individual medly stroke is used for each round.
+        8: "rimo"
+        // Reverse IM Order
+      },
+      activityType: {
+        0: "generic",
+        1: "running",
+        2: "cycling",
+        3: "transition",
+        // Mulitsport transition
+        4: "fitnessEquipment",
+        5: "swimming",
+        6: "walking",
+        8: "sedentary",
+        13: "wheelchairPushing",
+        254: "all"
+        // All is for goals only to include all sports.
+      },
+      activitySubtype: {
+        0: "generic",
+        1: "treadmill",
+        // Run
+        2: "street",
+        // Run
+        3: "trail",
+        // Run
+        4: "track",
+        // Run
+        5: "spin",
+        // Cycling
+        6: "indoorCycling",
+        // Cycling
+        7: "road",
+        // Cycling
+        8: "mountain",
+        // Cycling
+        9: "downhill",
+        // Cycling
+        10: "recumbent",
+        // Cycling
+        11: "cyclocross",
+        // Cycling
+        12: "handCycling",
+        // Cycling
+        13: "trackCycling",
+        // Cycling
+        14: "indoorRowing",
+        // Fitness Equipment
+        15: "elliptical",
+        // Fitness Equipment
+        16: "stairClimbing",
+        // Fitness Equipment
+        17: "lapSwimming",
+        // Swimming
+        18: "openWater",
+        // Swimming
+        254: "all"
+      },
+      activityLevel: {
+        0: "low",
+        1: "medium",
+        2: "high"
+      },
+      side: {
+        0: "right",
+        1: "left"
+      },
+      leftRightBalance: {
+        127: "mask",
+        // % contribution
+        128: "right"
+        // data corresponds to right if set, otherwise unknown
+      },
+      leftRightBalance100: {
+        16383: "mask",
+        // % contribution scaled by 100
+        32768: "right"
+        // data corresponds to right if set, otherwise unknown
+      },
+      lengthType: {
+        0: "idle",
+        // Rest period. Length with no strokes
+        1: "active"
+        // Length with strokes.
+      },
+      dayOfWeek: {
+        0: "sunday",
+        1: "monday",
+        2: "tuesday",
+        3: "wednesday",
+        4: "thursday",
+        5: "friday",
+        6: "saturday"
+      },
+      connectivityCapabilities: {
+        1: "bluetooth",
+        2: "bluetoothLe",
+        4: "ant",
+        8: "activityUpload",
+        16: "courseDownload",
+        32: "workoutDownload",
+        64: "liveTrack",
+        128: "weatherConditions",
+        256: "weatherAlerts",
+        512: "gpsEphemerisDownload",
+        1024: "explicitArchive",
+        2048: "setupIncomplete",
+        4096: "continueSyncAfterSoftwareUpdate",
+        8192: "connectIqAppDownload",
+        16384: "golfCourseDownload",
+        32768: "deviceInitiatesSync",
+        // Indicates device is in control of initiating all syncs
+        65536: "connectIqWatchAppDownload",
+        131072: "connectIqWidgetDownload",
+        262144: "connectIqWatchFaceDownload",
+        524288: "connectIqDataFieldDownload",
+        1048576: "connectIqAppManagment",
+        // Device supports delete and reorder of apps via GCM
+        2097152: "swingSensor",
+        4194304: "swingSensorRemote",
+        8388608: "incidentDetection",
+        // Device supports incident detection
+        16777216: "audioPrompts",
+        33554432: "wifiVerification",
+        // Device supports reporting wifi verification via GCM
+        67108864: "trueUp",
+        // Device supports True Up
+        134217728: "findMyWatch",
+        // Device supports Find My Watch
+        268435456: "remoteManualSync",
+        536870912: "liveTrackAutoStart",
+        // Device supports LiveTrack auto start
+        1073741824: "liveTrackMessaging",
+        // Device supports LiveTrack Messaging
+        2147483648: "instantInput"
+        // Device supports instant input feature
+      },
+      weatherReport: {
+        0: "current",
+        1: "forecast",
+        // Deprecated use hourly_forecast instead
+        1: "hourlyForecast",
+        2: "dailyForecast"
+      },
+      weatherStatus: {
+        0: "clear",
+        1: "partlyCloudy",
+        2: "mostlyCloudy",
+        3: "rain",
+        4: "snow",
+        5: "windy",
+        6: "thunderstorms",
+        7: "wintryMix",
+        8: "fog",
+        11: "hazy",
+        12: "hail",
+        13: "scatteredShowers",
+        14: "scatteredThunderstorms",
+        15: "unknownPrecipitation",
+        16: "lightRain",
+        17: "heavyRain",
+        18: "lightSnow",
+        19: "heavySnow",
+        20: "lightRainSnow",
+        21: "heavyRainSnow",
+        22: "cloudy"
+      },
+      weatherSeverity: {
+        0: "unknown",
+        1: "warning",
+        2: "watch",
+        3: "advisory",
+        4: "statement"
+      },
+      weatherSevereType: {
+        0: "unspecified",
+        1: "tornado",
+        2: "tsunami",
+        3: "hurricane",
+        4: "extremeWind",
+        5: "typhoon",
+        6: "inlandHurricane",
+        7: "hurricaneForceWind",
+        8: "waterspout",
+        9: "severeThunderstorm",
+        10: "wreckhouseWinds",
+        11: "lesSuetesWind",
+        12: "avalanche",
+        13: "flashFlood",
+        14: "tropicalStorm",
+        15: "inlandTropicalStorm",
+        16: "blizzard",
+        17: "iceStorm",
+        18: "freezingRain",
+        19: "debrisFlow",
+        20: "flashFreeze",
+        21: "dustStorm",
+        22: "highWind",
+        23: "winterStorm",
+        24: "heavyFreezingSpray",
+        25: "extremeCold",
+        26: "windChill",
+        27: "coldWave",
+        28: "heavySnowAlert",
+        29: "lakeEffectBlowingSnow",
+        30: "snowSquall",
+        31: "lakeEffectSnow",
+        32: "winterWeather",
+        33: "sleet",
+        34: "snowfall",
+        35: "snowAndBlowingSnow",
+        36: "blowingSnow",
+        37: "snowAlert",
+        38: "arcticOutflow",
+        39: "freezingDrizzle",
+        40: "storm",
+        41: "stormSurge",
+        42: "rainfall",
+        43: "arealFlood",
+        44: "coastalFlood",
+        45: "lakeshoreFlood",
+        46: "excessiveHeat",
+        47: "heat",
+        48: "weather",
+        49: "highHeatAndHumidity",
+        50: "humidexAndHealth",
+        51: "humidex",
+        52: "gale",
+        53: "freezingSpray",
+        54: "specialMarine",
+        55: "squall",
+        56: "strongWind",
+        57: "lakeWind",
+        58: "marineWeather",
+        59: "wind",
+        60: "smallCraftHazardousSeas",
+        61: "hazardousSeas",
+        62: "smallCraft",
+        63: "smallCraftWinds",
+        64: "smallCraftRoughBar",
+        65: "highWaterLevel",
+        66: "ashfall",
+        67: "freezingFog",
+        68: "denseFog",
+        69: "denseSmoke",
+        70: "blowingDust",
+        71: "hardFreeze",
+        72: "freeze",
+        73: "frost",
+        74: "fireWeather",
+        75: "flood",
+        76: "ripTide",
+        77: "highSurf",
+        78: "smog",
+        79: "airQuality",
+        80: "briskWind",
+        81: "airStagnation",
+        82: "lowWater",
+        83: "hydrological",
+        84: "specialWeather"
+      },
+      timeIntoDay: {},
+      localtimeIntoDay: {},
+      strokeType: {
+        0: "noEvent",
+        1: "other",
+        // stroke was detected but cannot be identified
+        2: "serve",
+        3: "forehand",
+        4: "backhand",
+        5: "smash"
+      },
+      bodyLocation: {
+        0: "leftLeg",
+        1: "leftCalf",
+        2: "leftShin",
+        3: "leftHamstring",
+        4: "leftQuad",
+        5: "leftGlute",
+        6: "rightLeg",
+        7: "rightCalf",
+        8: "rightShin",
+        9: "rightHamstring",
+        10: "rightQuad",
+        11: "rightGlute",
+        12: "torsoBack",
+        13: "leftLowerBack",
+        14: "leftUpperBack",
+        15: "rightLowerBack",
+        16: "rightUpperBack",
+        17: "torsoFront",
+        18: "leftAbdomen",
+        19: "leftChest",
+        20: "rightAbdomen",
+        21: "rightChest",
+        22: "leftArm",
+        23: "leftShoulder",
+        24: "leftBicep",
+        25: "leftTricep",
+        26: "leftBrachioradialis",
+        // Left anterior forearm
+        27: "leftForearmExtensors",
+        // Left posterior forearm
+        28: "rightArm",
+        29: "rightShoulder",
+        30: "rightBicep",
+        31: "rightTricep",
+        32: "rightBrachioradialis",
+        // Right anterior forearm
+        33: "rightForearmExtensors",
+        // Right posterior forearm
+        34: "neck",
+        35: "throat",
+        36: "waistMidBack",
+        37: "waistFront",
+        38: "waistLeft",
+        39: "waistRight"
+      },
+      segmentLapStatus: {
+        0: "end",
+        1: "fail"
+      },
+      segmentLeaderboardType: {
+        0: "overall",
+        1: "personalBest",
+        2: "connections",
+        3: "group",
+        4: "challenger",
+        5: "kom",
+        6: "qom",
+        7: "pr",
+        8: "goal",
+        9: "carrot",
+        10: "clubLeader",
+        11: "rival",
+        12: "last",
+        13: "recentBest",
+        14: "courseRecord"
+      },
+      segmentDeleteStatus: {
+        0: "doNotDelete",
+        1: "deleteOne",
+        2: "deleteAll"
+      },
+      segmentSelectionType: {
+        0: "starred",
+        1: "suggested"
+      },
+      sourceType: {
+        0: "ant",
+        // External device connected with ANT
+        1: "antplus",
+        // External device connected with ANT+
+        2: "bluetooth",
+        // External device connected with BT
+        3: "bluetoothLowEnergy",
+        // External device connected with BLE
+        4: "wifi",
+        // External device connected with Wifi
+        5: "local"
+        // Onboard device
+      },
+      localDeviceType: {
+        0: "gps",
+        // Onboard gps receiver
+        1: "glonass",
+        // Onboard glonass receiver
+        2: "gpsGlonass",
+        // Onboard gps glonass receiver
+        3: "accelerometer",
+        // Onboard sensor
+        4: "barometer",
+        // Onboard sensor
+        5: "temperature",
+        // Onboard sensor
+        10: "whr",
+        // Onboard wrist HR sensor
+        12: "sensorHub"
+        // Onboard software package
+      },
+      bleDeviceType: {
+        0: "connectedGps",
+        // GPS that is provided over a proprietary bluetooth service
+        1: "heartRate",
+        2: "bikePower",
+        3: "bikeSpeedCadence",
+        4: "bikeSpeed",
+        5: "bikeCadence",
+        6: "footpod",
+        7: "bikeTrainer"
+        // Indoor-Bike FTMS protocol
+      },
+      antChannelId: {
+        4026531840: "antExtendedDeviceNumberUpperNibble",
+        251658240: "antTransmissionTypeLowerNibble",
+        16711680: "antDeviceType",
+        65535: "antDeviceNumber"
+      },
+      displayOrientation: {
+        0: "auto",
+        // automatic if the device supports it
+        1: "portrait",
+        2: "landscape",
+        3: "portraitFlipped",
+        // portrait mode but rotated 180 degrees
+        4: "landscapeFlipped"
+        // landscape mode but rotated 180 degrees
+      },
+      workoutEquipment: {
+        0: "none",
+        1: "swimFins",
+        2: "swimKickboard",
+        3: "swimPaddles",
+        4: "swimPullBuoy",
+        5: "swimSnorkel"
+      },
+      watchfaceMode: {
+        0: "digital",
+        1: "analog",
+        2: "connectIq",
+        3: "disabled"
+      },
+      digitalWatchfaceLayout: {
+        0: "traditional",
+        1: "modern",
+        2: "bold"
+      },
+      analogWatchfaceLayout: {
+        0: "minimal",
+        1: "traditional",
+        2: "modern"
+      },
+      riderPositionType: {
+        0: "seated",
+        1: "standing",
+        2: "transitionToSeated",
+        3: "transitionToStanding"
+      },
+      powerPhaseType: {
+        0: "powerPhaseStartAngle",
+        1: "powerPhaseEndAngle",
+        2: "powerPhaseArcLength",
+        3: "powerPhaseCenter"
+      },
+      cameraEventType: {
+        0: "videoStart",
+        // Start of video recording
+        1: "videoSplit",
+        // Mark of video file split (end of one file, beginning of the other)
+        2: "videoEnd",
+        // End of video recording
+        3: "photoTaken",
+        // Still photo taken
+        4: "videoSecondStreamStart",
+        5: "videoSecondStreamSplit",
+        6: "videoSecondStreamEnd",
+        7: "videoSplitStart",
+        // Mark of video file split start
+        8: "videoSecondStreamSplitStart",
+        11: "videoPause",
+        // Mark when a video recording has been paused
+        12: "videoSecondStreamPause",
+        13: "videoResume",
+        // Mark when a video recording has been resumed
+        14: "videoSecondStreamResume"
+      },
+      sensorType: {
+        0: "accelerometer",
+        1: "gyroscope",
+        2: "compass",
+        // Magnetometer
+        3: "barometer"
+      },
+      bikeLightNetworkConfigType: {
+        0: "auto",
+        4: "individual",
+        5: "highVisibility",
+        6: "trail"
+      },
+      commTimeoutType: {
+        0: "wildcardPairingTimeout",
+        // Timeout pairing to any device
+        1: "pairingTimeout",
+        // Timeout pairing to previously paired device
+        2: "connectionLost",
+        // Temporary loss of communications
+        3: "connectionTimeout"
+        // Connection closed due to extended bad communications
+      },
+      cameraOrientationType: {
+        0: "cameraOrientation0",
+        1: "cameraOrientation90",
+        2: "cameraOrientation180",
+        3: "cameraOrientation270"
+      },
+      attitudeStage: {
+        0: "failed",
+        1: "aligning",
+        2: "degraded",
+        3: "valid"
+      },
+      attitudeValidity: {
+        1: "trackAngleHeadingValid",
+        2: "pitchValid",
+        4: "rollValid",
+        8: "lateralBodyAccelValid",
+        16: "normalBodyAccelValid",
+        32: "turnRateValid",
+        64: "hwFail",
+        128: "magInvalid",
+        256: "noGps",
+        512: "gpsInvalid",
+        1024: "solutionCoasting",
+        2048: "trueTrackAngle",
+        4096: "magneticHeading"
+      },
+      autoSyncFrequency: {
+        0: "never",
+        1: "occasionally",
+        2: "frequent",
+        3: "onceADay",
+        4: "remote"
+      },
+      exdLayout: {
+        0: "fullScreen",
+        1: "halfVertical",
+        2: "halfHorizontal",
+        3: "halfVerticalRightSplit",
+        4: "halfHorizontalBottomSplit",
+        5: "fullQuarterSplit",
+        6: "halfVerticalLeftSplit",
+        7: "halfHorizontalTopSplit",
+        8: "dynamic"
+        // The EXD may display the configured concepts in any layout it sees fit.
+      },
+      exdDisplayType: {
+        0: "numerical",
+        1: "simple",
+        2: "graph",
+        3: "bar",
+        4: "circleGraph",
+        5: "virtualPartner",
+        6: "balance",
+        7: "stringList",
+        8: "string",
+        9: "simpleDynamicIcon",
+        10: "gauge"
+      },
+      exdDataUnits: {
+        0: "noUnits",
+        1: "laps",
+        2: "milesPerHour",
+        3: "kilometersPerHour",
+        4: "feetPerHour",
+        5: "metersPerHour",
+        6: "degreesCelsius",
+        7: "degreesFarenheit",
+        8: "zone",
+        9: "gear",
+        10: "rpm",
+        11: "bpm",
+        12: "degrees",
+        13: "millimeters",
+        14: "meters",
+        15: "kilometers",
+        16: "feet",
+        17: "yards",
+        18: "kilofeet",
+        19: "miles",
+        20: "time",
+        21: "enumTurnType",
+        22: "percent",
+        23: "watts",
+        24: "wattsPerKilogram",
+        25: "enumBatteryStatus",
+        26: "enumBikeLightBeamAngleMode",
+        27: "enumBikeLightBatteryStatus",
+        28: "enumBikeLightNetworkConfigType",
+        29: "lights",
+        30: "seconds",
+        31: "minutes",
+        32: "hours",
+        33: "calories",
+        34: "kilojoules",
+        35: "milliseconds",
+        36: "secondPerMile",
+        37: "secondPerKilometer",
+        38: "centimeter",
+        39: "enumCoursePoint",
+        40: "bradians",
+        41: "enumSport",
+        42: "inchesHg",
+        43: "mmHg",
+        44: "mbars",
+        45: "hectoPascals",
+        46: "feetPerMin",
+        47: "metersPerMin",
+        48: "metersPerSec",
+        49: "eightCardinal"
+      },
+      exdQualifiers: {
+        0: "noQualifier",
+        1: "instantaneous",
+        2: "average",
+        3: "lap",
+        4: "maximum",
+        5: "maximumAverage",
+        6: "maximumLap",
+        7: "lastLap",
+        8: "averageLap",
+        9: "toDestination",
+        10: "toGo",
+        11: "toNext",
+        12: "nextCoursePoint",
+        13: "total",
+        14: "threeSecondAverage",
+        15: "tenSecondAverage",
+        16: "thirtySecondAverage",
+        17: "percentMaximum",
+        18: "percentMaximumAverage",
+        19: "lapPercentMaximum",
+        20: "elapsed",
+        21: "sunrise",
+        22: "sunset",
+        23: "comparedToVirtualPartner",
+        24: "maximum24h",
+        25: "minimum24h",
+        26: "minimum",
+        27: "first",
+        28: "second",
+        29: "third",
+        30: "shifter",
+        31: "lastSport",
+        32: "moving",
+        33: "stopped",
+        34: "estimatedTotal",
+        242: "zone9",
+        243: "zone8",
+        244: "zone7",
+        245: "zone6",
+        246: "zone5",
+        247: "zone4",
+        248: "zone3",
+        249: "zone2",
+        250: "zone1"
+      },
+      exdDescriptors: {
+        0: "bikeLightBatteryStatus",
+        1: "beamAngleStatus",
+        2: "bateryLevel",
+        3: "lightNetworkMode",
+        4: "numberLightsConnected",
+        5: "cadence",
+        6: "distance",
+        7: "estimatedTimeOfArrival",
+        8: "heading",
+        9: "time",
+        10: "batteryLevel",
+        11: "trainerResistance",
+        12: "trainerTargetPower",
+        13: "timeSeated",
+        14: "timeStanding",
+        15: "elevation",
+        16: "grade",
+        17: "ascent",
+        18: "descent",
+        19: "verticalSpeed",
+        20: "di2BatteryLevel",
+        21: "frontGear",
+        22: "rearGear",
+        23: "gearRatio",
+        24: "heartRate",
+        25: "heartRateZone",
+        26: "timeInHeartRateZone",
+        27: "heartRateReserve",
+        28: "calories",
+        29: "gpsAccuracy",
+        30: "gpsSignalStrength",
+        31: "temperature",
+        32: "timeOfDay",
+        33: "balance",
+        34: "pedalSmoothness",
+        35: "power",
+        36: "functionalThresholdPower",
+        37: "intensityFactor",
+        38: "work",
+        39: "powerRatio",
+        40: "normalizedPower",
+        41: "trainingStressScore",
+        42: "timeOnZone",
+        43: "speed",
+        44: "laps",
+        45: "reps",
+        46: "workoutStep",
+        47: "courseDistance",
+        48: "navigationDistance",
+        49: "courseEstimatedTimeOfArrival",
+        50: "navigationEstimatedTimeOfArrival",
+        51: "courseTime",
+        52: "navigationTime",
+        53: "courseHeading",
+        54: "navigationHeading",
+        55: "powerZone",
+        56: "torqueEffectiveness",
+        57: "timerTime",
+        58: "powerWeightRatio",
+        59: "leftPlatformCenterOffset",
+        60: "rightPlatformCenterOffset",
+        61: "leftPowerPhaseStartAngle",
+        62: "rightPowerPhaseStartAngle",
+        63: "leftPowerPhaseFinishAngle",
+        64: "rightPowerPhaseFinishAngle",
+        65: "gears",
+        // Combined gear information
+        66: "pace",
+        67: "trainingEffect",
+        68: "verticalOscillation",
+        69: "verticalRatio",
+        70: "groundContactTime",
+        71: "leftGroundContactTimeBalance",
+        72: "rightGroundContactTimeBalance",
+        73: "strideLength",
+        74: "runningCadence",
+        75: "performanceCondition",
+        76: "courseType",
+        77: "timeInPowerZone",
+        78: "navigationTurn",
+        79: "courseLocation",
+        80: "navigationLocation",
+        81: "compass",
+        82: "gearCombo",
+        83: "muscleOxygen",
+        84: "icon",
+        85: "compassHeading",
+        86: "gpsHeading",
+        87: "gpsElevation",
+        88: "anaerobicTrainingEffect",
+        89: "course",
+        90: "offCourse",
+        91: "glideRatio",
+        92: "verticalDistance",
+        93: "vmg",
+        94: "ambientPressure",
+        95: "pressure",
+        96: "vam"
+      },
+      autoActivityDetect: {
+        0: "none",
+        1: "running",
+        2: "cycling",
+        4: "swimming",
+        8: "walking",
+        32: "elliptical",
+        1024: "sedentary"
+      },
+      supportedExdScreenLayouts: {
+        1: "fullScreen",
+        2: "halfVertical",
+        4: "halfHorizontal",
+        8: "halfVerticalRightSplit",
+        16: "halfHorizontalBottomSplit",
+        32: "fullQuarterSplit",
+        64: "halfVerticalLeftSplit",
+        128: "halfHorizontalTopSplit"
+      },
+      fitBaseType: {
+        0: "enum",
+        1: "sint8",
+        2: "uint8",
+        131: "sint16",
+        132: "uint16",
+        133: "sint32",
+        134: "uint32",
+        7: "string",
+        136: "float32",
+        137: "float64",
+        10: "uint8z",
+        139: "uint16z",
+        140: "uint32z",
+        13: "byte",
+        142: "sint64",
+        143: "uint64",
+        144: "uint64z"
+      },
+      turnType: {
+        0: "arrivingIdx",
+        1: "arrivingLeftIdx",
+        2: "arrivingRightIdx",
+        3: "arrivingViaIdx",
+        4: "arrivingViaLeftIdx",
+        5: "arrivingViaRightIdx",
+        6: "bearKeepLeftIdx",
+        7: "bearKeepRightIdx",
+        8: "continueIdx",
+        9: "exitLeftIdx",
+        10: "exitRightIdx",
+        11: "ferryIdx",
+        12: "roundabout45Idx",
+        13: "roundabout90Idx",
+        14: "roundabout135Idx",
+        15: "roundabout180Idx",
+        16: "roundabout225Idx",
+        17: "roundabout270Idx",
+        18: "roundabout315Idx",
+        19: "roundabout360Idx",
+        20: "roundaboutNeg45Idx",
+        21: "roundaboutNeg90Idx",
+        22: "roundaboutNeg135Idx",
+        23: "roundaboutNeg180Idx",
+        24: "roundaboutNeg225Idx",
+        25: "roundaboutNeg270Idx",
+        26: "roundaboutNeg315Idx",
+        27: "roundaboutNeg360Idx",
+        28: "roundaboutGenericIdx",
+        29: "roundaboutNegGenericIdx",
+        30: "sharpTurnLeftIdx",
+        31: "sharpTurnRightIdx",
+        32: "turnLeftIdx",
+        33: "turnRightIdx",
+        34: "uturnLeftIdx",
+        35: "uturnRightIdx",
+        36: "iconInvIdx",
+        37: "iconIdxCnt"
+      },
+      bikeLightBeamAngleMode: {
+        0: "manual",
+        1: "auto"
+      },
+      fitBaseUnit: {
+        0: "other",
+        1: "kilogram",
+        2: "pound"
+      },
+      setType: {
+        0: "rest",
+        1: "active"
+      },
+      maxMetCategory: {
+        0: "generic",
+        1: "cycling"
+      },
+      exerciseCategory: {
+        0: "benchPress",
+        1: "calfRaise",
+        2: "cardio",
+        3: "carry",
+        4: "chop",
+        5: "core",
+        6: "crunch",
+        7: "curl",
+        8: "deadlift",
+        9: "flye",
+        10: "hipRaise",
+        11: "hipStability",
+        12: "hipSwing",
+        13: "hyperextension",
+        14: "lateralRaise",
+        15: "legCurl",
+        16: "legRaise",
+        17: "lunge",
+        18: "olympicLift",
+        19: "plank",
+        20: "plyo",
+        21: "pullUp",
+        22: "pushUp",
+        23: "row",
+        24: "shoulderPress",
+        25: "shoulderStability",
+        26: "shrug",
+        27: "sitUp",
+        28: "squat",
+        29: "totalBody",
+        30: "tricepsExtension",
+        31: "warmUp",
+        32: "run",
+        33: "bike",
+        34: "cardioSensors",
+        // Exercises within workouts that use GPS/sensors rather than rep counting
+        35: "move",
+        36: "pose",
+        37: "bandedExercises",
+        38: "battleRope",
+        39: "elliptical",
+        40: "floorClimb",
+        41: "indoorBike",
+        42: "indoorRow",
+        43: "ladder",
+        44: "sandbag",
+        45: "sled",
+        46: "sledgeHammer",
+        47: "stairStepper",
+        49: "suspension",
+        50: "tire",
+        52: "runIndoor",
+        53: "bikeOutdoor",
+        65534: "unknown"
+      },
+      benchPressExerciseName: {
+        0: "alternatingDumbbellChestPressOnSwissBall",
+        1: "barbellBenchPress",
+        2: "barbellBoardBenchPress",
+        3: "barbellFloorPress",
+        4: "closeGripBarbellBenchPress",
+        5: "declineDumbbellBenchPress",
+        6: "dumbbellBenchPress",
+        7: "dumbbellFloorPress",
+        8: "inclineBarbellBenchPress",
+        9: "inclineDumbbellBenchPress",
+        10: "inclineSmithMachineBenchPress",
+        11: "isometricBarbellBenchPress",
+        12: "kettlebellChestPress",
+        13: "neutralGripDumbbellBenchPress",
+        14: "neutralGripDumbbellInclineBenchPress",
+        15: "oneArmFloorPress",
+        16: "weightedOneArmFloorPress",
+        17: "partialLockout",
+        18: "reverseGripBarbellBenchPress",
+        19: "reverseGripInclineBenchPress",
+        20: "singleArmCableChestPress",
+        21: "singleArmDumbbellBenchPress",
+        22: "smithMachineBenchPress",
+        23: "swissBallDumbbellChestPress",
+        24: "tripleStopBarbellBenchPress",
+        25: "wideGripBarbellBenchPress",
+        26: "alternatingDumbbellChestPress"
+      },
+      calfRaiseExerciseName: {
+        0: "3WayCalfRaise",
+        1: "3WayWeightedCalfRaise",
+        2: "3WaySingleLegCalfRaise",
+        3: "3WayWeightedSingleLegCalfRaise",
+        4: "donkeyCalfRaise",
+        5: "weightedDonkeyCalfRaise",
+        6: "seatedCalfRaise",
+        7: "weightedSeatedCalfRaise",
+        8: "seatedDumbbellToeRaise",
+        9: "singleLegBentKneeCalfRaise",
+        10: "weightedSingleLegBentKneeCalfRaise",
+        11: "singleLegDeclinePushUp",
+        12: "singleLegDonkeyCalfRaise",
+        13: "weightedSingleLegDonkeyCalfRaise",
+        14: "singleLegHipRaiseWithKneeHold",
+        15: "singleLegStandingCalfRaise",
+        16: "singleLegStandingDumbbellCalfRaise",
+        17: "standingBarbellCalfRaise",
+        18: "standingCalfRaise",
+        19: "weightedStandingCalfRaise",
+        20: "standingDumbbellCalfRaise"
+      },
+      cardioExerciseName: {
+        0: "bobAndWeaveCircle",
+        1: "weightedBobAndWeaveCircle",
+        2: "cardioCoreCrawl",
+        3: "weightedCardioCoreCrawl",
+        4: "doubleUnder",
+        5: "weightedDoubleUnder",
+        6: "jumpRope",
+        7: "weightedJumpRope",
+        8: "jumpRopeCrossover",
+        9: "weightedJumpRopeCrossover",
+        10: "jumpRopeJog",
+        11: "weightedJumpRopeJog",
+        12: "jumpingJacks",
+        13: "weightedJumpingJacks",
+        14: "skiMoguls",
+        15: "weightedSkiMoguls",
+        16: "splitJacks",
+        17: "weightedSplitJacks",
+        18: "squatJacks",
+        19: "weightedSquatJacks",
+        20: "tripleUnder",
+        21: "weightedTripleUnder",
+        22: "elliptical",
+        23: "spinning",
+        24: "polePaddleForwardWheelchair",
+        25: "polePaddleBackwardWheelchair",
+        26: "poleHandcycleForwardWheelchair",
+        27: "poleHandcycleBackwardWheelchair",
+        28: "poleRainbowWheelchair",
+        29: "doublePunchForwardWheelchair",
+        30: "doublePunchDownWheelchair",
+        31: "doublePunchSidewaysWheelchair",
+        32: "doublePunchUpWheelchair",
+        33: "sitSkiWheelchair",
+        34: "sittingJacksWheelchair",
+        35: "punchForwardWheelchair",
+        36: "punchDownWheelchair",
+        37: "punchSidewaysWheelchair",
+        38: "punchUpWheelchair",
+        39: "punchBagWheelchair",
+        40: "poleDdFfUuWheelchair",
+        41: "butterflyArmsWheelchair",
+        42: "punch"
+      },
+      carryExerciseName: {
+        0: "barHolds",
+        1: "farmersWalk",
+        2: "farmersWalkOnToes",
+        3: "hexDumbbellHold",
+        4: "overheadCarry",
+        5: "dumbbellWaiterCarry",
+        6: "farmersCarryWalkLunge",
+        7: "farmersCarry",
+        8: "farmersCarryOnToes"
+      },
+      chopExerciseName: {
+        0: "cablePullThrough",
+        1: "cableRotationalLift",
+        2: "cableWoodchop",
+        3: "crossChopToKnee",
+        4: "weightedCrossChopToKnee",
+        5: "dumbbellChop",
+        6: "halfKneelingRotation",
+        7: "weightedHalfKneelingRotation",
+        8: "halfKneelingRotationalChop",
+        9: "halfKneelingRotationalReverseChop",
+        10: "halfKneelingStabilityChop",
+        11: "halfKneelingStabilityReverseChop",
+        12: "kneelingRotationalChop",
+        13: "kneelingRotationalReverseChop",
+        14: "kneelingStabilityChop",
+        15: "kneelingWoodchopper",
+        16: "medicineBallWoodChops",
+        17: "powerSquatChops",
+        18: "weightedPowerSquatChops",
+        19: "standingRotationalChop",
+        20: "standingSplitRotationalChop",
+        21: "standingSplitRotationalReverseChop",
+        22: "standingStabilityReverseChop"
+      },
+      coreExerciseName: {
+        0: "absJabs",
+        1: "weightedAbsJabs",
+        2: "alternatingPlateReach",
+        3: "barbellRollout",
+        4: "weightedBarbellRollout",
+        5: "bodyBarObliqueTwist",
+        6: "cableCorePress",
+        7: "cableSideBend",
+        8: "sideBend",
+        9: "weightedSideBend",
+        10: "crescentCircle",
+        11: "weightedCrescentCircle",
+        12: "cyclingRussianTwist",
+        13: "weightedCyclingRussianTwist",
+        14: "elevatedFeetRussianTwist",
+        15: "weightedElevatedFeetRussianTwist",
+        16: "halfTurkishGetUp",
+        17: "kettlebellWindmill",
+        18: "kneelingAbWheel",
+        19: "weightedKneelingAbWheel",
+        20: "modifiedFrontLever",
+        21: "openKneeTucks",
+        22: "weightedOpenKneeTucks",
+        23: "sideAbsLegLift",
+        24: "weightedSideAbsLegLift",
+        25: "swissBallJackknife",
+        26: "weightedSwissBallJackknife",
+        27: "swissBallPike",
+        28: "weightedSwissBallPike",
+        29: "swissBallRollout",
+        30: "weightedSwissBallRollout",
+        31: "triangleHipPress",
+        32: "weightedTriangleHipPress",
+        33: "trxSuspendedJackknife",
+        34: "weightedTrxSuspendedJackknife",
+        35: "uBoat",
+        36: "weightedUBoat",
+        37: "windmillSwitches",
+        38: "weightedWindmillSwitches",
+        39: "alternatingSlideOut",
+        40: "weightedAlternatingSlideOut",
+        41: "ghdBackExtensions",
+        42: "weightedGhdBackExtensions",
+        43: "overheadWalk",
+        44: "inchworm",
+        45: "weightedModifiedFrontLever",
+        46: "russianTwist",
+        47: "abdominalLegRotations",
+        // Deprecated do not use
+        48: "armAndLegExtensionOnKnees",
+        49: "bicycle",
+        50: "bicepCurlWithLegExtension",
+        51: "catCow",
+        52: "corkscrew",
+        53: "crissCross",
+        54: "crissCrossWithBall",
+        // Deprecated do not use
+        55: "doubleLegStretch",
+        56: "kneeFolds",
+        57: "lowerLift",
+        58: "neckPull",
+        59: "pelvicClocks",
+        60: "rollOver",
+        61: "rollUp",
+        62: "rolling",
+        63: "rowing1",
+        64: "rowing2",
+        65: "scissors",
+        66: "singleLegCircles",
+        67: "singleLegStretch",
+        68: "snakeTwist1And2",
+        // Deprecated do not use
+        69: "swan",
+        70: "swimming",
+        71: "teaser",
+        72: "theHundred",
+        73: "bicepCurlWithLegExtensionWithWeights",
+        75: "hangingLSit",
+        77: "lowerLiftWithWeights",
+        79: "ringLSit",
+        80: "rowing1WithWeights",
+        81: "rowing2WithWeights",
+        82: "scissorsWithWeights",
+        83: "singleLegStretchWithWeights",
+        84: "toesToElbows",
+        85: "weightedCrissCross",
+        86: "weightedDoubleLegStretch",
+        87: "weightedTheHundred",
+        88: "lSit",
+        89: "turkishGetUp",
+        90: "weightedRingLSit",
+        91: "weightedHangingLSit",
+        92: "weightedLSit",
+        93: "sideBendLowWheelchair",
+        94: "sideBendMidWheelchair",
+        95: "sideBendHighWheelchair",
+        96: "seatedSideBend"
+      },
+      crunchExerciseName: {
+        0: "bicycleCrunch",
+        1: "cableCrunch",
+        2: "circularArmCrunch",
+        3: "crossedArmsCrunch",
+        4: "weightedCrossedArmsCrunch",
+        5: "crossLegReverseCrunch",
+        6: "weightedCrossLegReverseCrunch",
+        7: "crunchChop",
+        8: "weightedCrunchChop",
+        9: "doubleCrunch",
+        10: "weightedDoubleCrunch",
+        11: "elbowToKneeCrunch",
+        12: "weightedElbowToKneeCrunch",
+        13: "flutterKicks",
+        14: "weightedFlutterKicks",
+        15: "foamRollerReverseCrunchOnBench",
+        16: "weightedFoamRollerReverseCrunchOnBench",
+        17: "foamRollerReverseCrunchWithDumbbell",
+        18: "foamRollerReverseCrunchWithMedicineBall",
+        19: "frogPress",
+        20: "hangingKneeRaiseObliqueCrunch",
+        21: "weightedHangingKneeRaiseObliqueCrunch",
+        22: "hipCrossover",
+        23: "weightedHipCrossover",
+        24: "hollowRock",
+        25: "weightedHollowRock",
+        26: "inclineReverseCrunch",
+        27: "weightedInclineReverseCrunch",
+        28: "kneelingCableCrunch",
+        29: "kneelingCrossCrunch",
+        30: "weightedKneelingCrossCrunch",
+        31: "kneelingObliqueCableCrunch",
+        32: "kneesToElbow",
+        33: "legExtensions",
+        34: "weightedLegExtensions",
+        35: "legLevers",
+        36: "mcgillCurlUp",
+        37: "weightedMcgillCurlUp",
+        38: "modifiedPilatesRollUpWithBall",
+        39: "weightedModifiedPilatesRollUpWithBall",
+        40: "pilatesCrunch",
+        41: "weightedPilatesCrunch",
+        42: "pilatesRollUpWithBall",
+        43: "weightedPilatesRollUpWithBall",
+        44: "raisedLegsCrunch",
+        45: "weightedRaisedLegsCrunch",
+        46: "reverseCrunch",
+        47: "weightedReverseCrunch",
+        48: "reverseCrunchOnABench",
+        49: "weightedReverseCrunchOnABench",
+        50: "reverseCurlAndLift",
+        51: "weightedReverseCurlAndLift",
+        52: "rotationalLift",
+        53: "weightedRotationalLift",
+        54: "seatedAlternatingReverseCrunch",
+        55: "weightedSeatedAlternatingReverseCrunch",
+        56: "seatedLegU",
+        57: "weightedSeatedLegU",
+        58: "sideToSideCrunchAndWeave",
+        59: "weightedSideToSideCrunchAndWeave",
+        60: "singleLegReverseCrunch",
+        61: "weightedSingleLegReverseCrunch",
+        62: "skaterCrunchCross",
+        63: "weightedSkaterCrunchCross",
+        64: "standingCableCrunch",
+        65: "standingSideCrunch",
+        66: "stepClimb",
+        67: "weightedStepClimb",
+        68: "swissBallCrunch",
+        69: "swissBallReverseCrunch",
+        70: "weightedSwissBallReverseCrunch",
+        71: "swissBallRussianTwist",
+        72: "weightedSwissBallRussianTwist",
+        73: "swissBallSideCrunch",
+        74: "weightedSwissBallSideCrunch",
+        75: "thoracicCrunchesOnFoamRoller",
+        76: "weightedThoracicCrunchesOnFoamRoller",
+        77: "tricepsCrunch",
+        78: "weightedBicycleCrunch",
+        79: "weightedCrunch",
+        80: "weightedSwissBallCrunch",
+        81: "toesToBar",
+        82: "weightedToesToBar",
+        83: "crunch",
+        84: "straightLegCrunchWithBall",
+        86: "legClimbCrunch"
+      },
+      curlExerciseName: {
+        0: "alternatingDumbbellBicepsCurl",
+        1: "alternatingDumbbellBicepsCurlOnSwissBall",
+        2: "alternatingInclineDumbbellBicepsCurl",
+        3: "barbellBicepsCurl",
+        4: "barbellReverseWristCurl",
+        5: "barbellWristCurl",
+        6: "behindTheBackBarbellReverseWristCurl",
+        7: "behindTheBackOneArmCableCurl",
+        8: "cableBicepsCurl",
+        9: "cableHammerCurl",
+        10: "cheatingBarbellBicepsCurl",
+        11: "closeGripEzBarBicepsCurl",
+        12: "crossBodyDumbbellHammerCurl",
+        13: "deadHangBicepsCurl",
+        14: "declineHammerCurl",
+        15: "dumbbellBicepsCurlWithStaticHold",
+        16: "dumbbellHammerCurl",
+        17: "dumbbellReverseWristCurl",
+        18: "dumbbellWristCurl",
+        19: "ezBarPreacherCurl",
+        20: "forwardBendBicepsCurl",
+        21: "hammerCurlToPress",
+        22: "inclineDumbbellBicepsCurl",
+        23: "inclineOffsetThumbDumbbellCurl",
+        24: "kettlebellBicepsCurl",
+        25: "lyingConcentrationCableCurl",
+        26: "oneArmPreacherCurl",
+        27: "platePinchCurl",
+        28: "preacherCurlWithCable",
+        29: "reverseEzBarCurl",
+        30: "reverseGripWristCurl",
+        31: "reverseGripBarbellBicepsCurl",
+        32: "seatedAlternatingDumbbellBicepsCurl",
+        33: "seatedDumbbellBicepsCurl",
+        34: "seatedReverseDumbbellCurl",
+        35: "splitStanceOffsetPinkyDumbbellCurl",
+        36: "standingAlternatingDumbbellCurls",
+        37: "standingDumbbellBicepsCurl",
+        38: "standingEzBarBicepsCurl",
+        39: "staticCurl",
+        40: "swissBallDumbbellOverheadTricepsExtension",
+        41: "swissBallEzBarPreacherCurl",
+        42: "twistingStandingDumbbellBicepsCurl",
+        43: "wideGripEzBarBicepsCurl",
+        44: "oneArmConcentrationCurl",
+        45: "standingZottmanBicepsCurl",
+        46: "dumbbellBicepsCurl",
+        47: "dragCurlWheelchair",
+        48: "dumbbellBicepsCurlWheelchair",
+        49: "bottleCurl",
+        50: "seatedBottleCurl"
+      },
+      deadliftExerciseName: {
+        0: "barbellDeadlift",
+        1: "barbellStraightLegDeadlift",
+        2: "dumbbellDeadlift",
+        3: "dumbbellSingleLegDeadliftToRow",
+        4: "dumbbellStraightLegDeadlift",
+        5: "kettlebellFloorToShelf",
+        6: "oneArmOneLegDeadlift",
+        7: "rackPull",
+        8: "rotationalDumbbellStraightLegDeadlift",
+        9: "singleArmDeadlift",
+        10: "singleLegBarbellDeadlift",
+        11: "singleLegBarbellStraightLegDeadlift",
+        12: "singleLegDeadliftWithBarbell",
+        13: "singleLegRdlCircuit",
+        14: "singleLegRomanianDeadliftWithDumbbell",
+        15: "sumoDeadlift",
+        16: "sumoDeadliftHighPull",
+        17: "trapBarDeadlift",
+        18: "wideGripBarbellDeadlift",
+        20: "kettlebellDeadlift",
+        21: "kettlebellSumoDeadlift",
+        23: "romanianDeadlift",
+        24: "singleLegRomanianDeadliftCircuit",
+        25: "straightLegDeadlift"
+      },
+      flyeExerciseName: {
+        0: "cableCrossover",
+        1: "declineDumbbellFlye",
+        2: "dumbbellFlye",
+        3: "inclineDumbbellFlye",
+        4: "kettlebellFlye",
+        5: "kneelingRearFlye",
+        6: "singleArmStandingCableReverseFlye",
+        7: "swissBallDumbbellFlye",
+        8: "armRotations",
+        9: "hugATree",
+        10: "faceDownInclineReverseFlye",
+        11: "inclineReverseFlye",
+        12: "rearDeltFlyWheelchair"
+      },
+      hipRaiseExerciseName: {
+        0: "barbellHipThrustOnFloor",
+        1: "barbellHipThrustWithBench",
+        2: "bentKneeSwissBallReverseHipRaise",
+        3: "weightedBentKneeSwissBallReverseHipRaise",
+        4: "bridgeWithLegExtension",
+        5: "weightedBridgeWithLegExtension",
+        6: "clamBridge",
+        7: "frontKickTabletop",
+        8: "weightedFrontKickTabletop",
+        9: "hipExtensionAndCross",
+        10: "weightedHipExtensionAndCross",
+        11: "hipRaise",
+        12: "weightedHipRaise",
+        13: "hipRaiseWithFeetOnSwissBall",
+        14: "weightedHipRaiseWithFeetOnSwissBall",
+        15: "hipRaiseWithHeadOnBosuBall",
+        16: "weightedHipRaiseWithHeadOnBosuBall",
+        17: "hipRaiseWithHeadOnSwissBall",
+        18: "weightedHipRaiseWithHeadOnSwissBall",
+        19: "hipRaiseWithKneeSqueeze",
+        20: "weightedHipRaiseWithKneeSqueeze",
+        21: "inclineRearLegExtension",
+        22: "weightedInclineRearLegExtension",
+        23: "kettlebellSwing",
+        24: "marchingHipRaise",
+        25: "weightedMarchingHipRaise",
+        26: "marchingHipRaiseWithFeetOnASwissBall",
+        27: "weightedMarchingHipRaiseWithFeetOnASwissBall",
+        28: "reverseHipRaise",
+        29: "weightedReverseHipRaise",
+        30: "singleLegHipRaise",
+        31: "weightedSingleLegHipRaise",
+        32: "singleLegHipRaiseWithFootOnBench",
+        33: "weightedSingleLegHipRaiseWithFootOnBench",
+        34: "singleLegHipRaiseWithFootOnBosuBall",
+        35: "weightedSingleLegHipRaiseWithFootOnBosuBall",
+        36: "singleLegHipRaiseWithFootOnFoamRoller",
+        37: "weightedSingleLegHipRaiseWithFootOnFoamRoller",
+        38: "singleLegHipRaiseWithFootOnMedicineBall",
+        39: "weightedSingleLegHipRaiseWithFootOnMedicineBall",
+        40: "singleLegHipRaiseWithHeadOnBosuBall",
+        41: "weightedSingleLegHipRaiseWithHeadOnBosuBall",
+        42: "weightedClamBridge",
+        43: "singleLegSwissBallHipRaiseAndLegCurl",
+        44: "clams",
+        45: "innerThighCircles",
+        // Deprecated do not use
+        46: "innerThighSideLift",
+        // Deprecated do not use
+        47: "legCircles",
+        48: "legLift",
+        49: "legLiftInExternalRotation"
+      },
+      hipStabilityExerciseName: {
+        0: "bandSideLyingLegRaise",
+        1: "deadBug",
+        2: "weightedDeadBug",
+        3: "externalHipRaise",
+        4: "weightedExternalHipRaise",
+        5: "fireHydrantKicks",
+        6: "weightedFireHydrantKicks",
+        7: "hipCircles",
+        8: "weightedHipCircles",
+        9: "innerThighLift",
+        10: "weightedInnerThighLift",
+        11: "lateralWalksWithBandAtAnkles",
+        12: "pretzelSideKick",
+        13: "weightedPretzelSideKick",
+        14: "proneHipInternalRotation",
+        15: "weightedProneHipInternalRotation",
+        16: "quadruped",
+        17: "quadrupedHipExtension",
+        18: "weightedQuadrupedHipExtension",
+        19: "quadrupedWithLegLift",
+        20: "weightedQuadrupedWithLegLift",
+        21: "sideLyingLegRaise",
+        22: "weightedSideLyingLegRaise",
+        23: "slidingHipAdduction",
+        24: "weightedSlidingHipAdduction",
+        25: "standingAdduction",
+        26: "weightedStandingAdduction",
+        27: "standingCableHipAbduction",
+        28: "standingHipAbduction",
+        29: "weightedStandingHipAbduction",
+        30: "standingRearLegRaise",
+        31: "weightedStandingRearLegRaise",
+        32: "supineHipInternalRotation",
+        33: "weightedSupineHipInternalRotation",
+        34: "lyingAbductionStretch"
+      },
+      hipSwingExerciseName: {
+        0: "singleArmKettlebellSwing",
+        1: "singleArmDumbbellSwing",
+        2: "stepOutSwing",
+        3: "oneArmSwing"
+      },
+      hyperextensionExerciseName: {
+        0: "backExtensionWithOppositeArmAndLegReach",
+        1: "weightedBackExtensionWithOppositeArmAndLegReach",
+        2: "baseRotations",
+        3: "weightedBaseRotations",
+        4: "bentKneeReverseHyperextension",
+        5: "weightedBentKneeReverseHyperextension",
+        6: "hollowHoldAndRoll",
+        7: "weightedHollowHoldAndRoll",
+        8: "kicks",
+        9: "weightedKicks",
+        10: "kneeRaises",
+        11: "weightedKneeRaises",
+        12: "kneelingSuperman",
+        13: "weightedKneelingSuperman",
+        14: "latPullDownWithRow",
+        15: "medicineBallDeadliftToReach",
+        16: "oneArmOneLegRow",
+        17: "oneArmRowWithBand",
+        18: "overheadLungeWithMedicineBall",
+        19: "plankKneeTucks",
+        20: "weightedPlankKneeTucks",
+        21: "sideStep",
+        22: "weightedSideStep",
+        23: "singleLegBackExtension",
+        24: "weightedSingleLegBackExtension",
+        25: "spineExtension",
+        26: "weightedSpineExtension",
+        27: "staticBackExtension",
+        28: "weightedStaticBackExtension",
+        29: "supermanFromFloor",
+        30: "weightedSupermanFromFloor",
+        31: "swissBallBackExtension",
+        32: "weightedSwissBallBackExtension",
+        33: "swissBallHyperextension",
+        34: "weightedSwissBallHyperextension",
+        35: "swissBallOppositeArmAndLegLift",
+        36: "weightedSwissBallOppositeArmAndLegLift",
+        37: "supermanOnSwissBall",
+        38: "cobra",
+        39: "supineFloorBarre"
+        // Deprecated do not use
+      },
+      lateralRaiseExerciseName: {
+        0: "45DegreeCableExternalRotation",
+        1: "alternatingLateralRaiseWithStaticHold",
+        2: "barMuscleUp",
+        3: "bentOverLateralRaise",
+        4: "cableDiagonalRaise",
+        5: "cableFrontRaise",
+        6: "calorieRow",
+        7: "comboShoulderRaise",
+        8: "dumbbellDiagonalRaise",
+        9: "dumbbellVRaise",
+        10: "frontRaise",
+        11: "leaningDumbbellLateralRaise",
+        12: "lyingDumbbellRaise",
+        13: "muscleUp",
+        14: "oneArmCableLateralRaise",
+        15: "overhandGripRearLateralRaise",
+        16: "plateRaises",
+        17: "ringDip",
+        18: "weightedRingDip",
+        19: "ringMuscleUp",
+        20: "weightedRingMuscleUp",
+        21: "ropeClimb",
+        22: "weightedRopeClimb",
+        23: "scaption",
+        24: "seatedLateralRaise",
+        25: "seatedRearLateralRaise",
+        26: "sideLyingLateralRaise",
+        27: "standingLift",
+        28: "suspendedRow",
+        29: "underhandGripRearLateralRaise",
+        30: "wallSlide",
+        31: "weightedWallSlide",
+        32: "armCircles",
+        33: "shavingTheHead",
+        34: "dumbbellLateralRaise",
+        36: "ringDipKipping",
+        37: "wallWalk",
+        38: "dumbbellFrontRaiseWheelchair",
+        39: "dumbbellLateralRaiseWheelchair",
+        40: "poleDoubleArmOverheadAndForwardWheelchair",
+        41: "poleStraightArmOverheadWheelchair"
+      },
+      legCurlExerciseName: {
+        0: "legCurl",
+        1: "weightedLegCurl",
+        2: "goodMorning",
+        3: "seatedBarbellGoodMorning",
+        4: "singleLegBarbellGoodMorning",
+        5: "singleLegSlidingLegCurl",
+        6: "slidingLegCurl",
+        7: "splitBarbellGoodMorning",
+        8: "splitStanceExtension",
+        9: "staggeredStanceGoodMorning",
+        10: "swissBallHipRaiseAndLegCurl",
+        11: "zercherGoodMorning",
+        12: "bandGoodMorning",
+        13: "barGoodMorning"
+      },
+      legRaiseExerciseName: {
+        0: "hangingKneeRaise",
+        1: "hangingLegRaise",
+        2: "weightedHangingLegRaise",
+        3: "hangingSingleLegRaise",
+        4: "weightedHangingSingleLegRaise",
+        5: "kettlebellLegRaises",
+        6: "legLoweringDrill",
+        7: "weightedLegLoweringDrill",
+        8: "lyingStraightLegRaise",
+        9: "weightedLyingStraightLegRaise",
+        10: "medicineBallLegDrops",
+        11: "quadrupedLegRaise",
+        12: "weightedQuadrupedLegRaise",
+        13: "reverseLegRaise",
+        14: "weightedReverseLegRaise",
+        15: "reverseLegRaiseOnSwissBall",
+        16: "weightedReverseLegRaiseOnSwissBall",
+        17: "singleLegLoweringDrill",
+        18: "weightedSingleLegLoweringDrill",
+        19: "weightedHangingKneeRaise",
+        20: "lateralStepover",
+        21: "weightedLateralStepover"
+      },
+      lungeExerciseName: {
+        0: "overheadLunge",
+        1: "lungeMatrix",
+        2: "weightedLungeMatrix",
+        3: "alternatingBarbellForwardLunge",
+        4: "alternatingDumbbellLungeWithReach",
+        5: "backFootElevatedDumbbellSplitSquat",
+        6: "barbellBoxLunge",
+        7: "barbellBulgarianSplitSquat",
+        8: "barbellCrossoverLunge",
+        9: "barbellFrontSplitSquat",
+        10: "barbellLunge",
+        11: "barbellReverseLunge",
+        12: "barbellSideLunge",
+        13: "barbellSplitSquat",
+        14: "coreControlRearLunge",
+        15: "diagonalLunge",
+        16: "dropLunge",
+        17: "dumbbellBoxLunge",
+        18: "dumbbellBulgarianSplitSquat",
+        19: "dumbbellCrossoverLunge",
+        20: "dumbbellDiagonalLunge",
+        21: "dumbbellLunge",
+        22: "dumbbellLungeAndRotation",
+        23: "dumbbellOverheadBulgarianSplitSquat",
+        24: "dumbbellReverseLungeToHighKneeAndPress",
+        25: "dumbbellSideLunge",
+        26: "elevatedFrontFootBarbellSplitSquat",
+        27: "frontFootElevatedDumbbellSplitSquat",
+        28: "gunslingerLunge",
+        29: "lawnmowerLunge",
+        30: "lowLungeWithIsometricAdduction",
+        31: "lowSideToSideLunge",
+        32: "lunge",
+        33: "weightedLunge",
+        34: "lungeWithArmReach",
+        35: "lungeWithDiagonalReach",
+        36: "lungeWithSideBend",
+        37: "offsetDumbbellLunge",
+        38: "offsetDumbbellReverseLunge",
+        39: "overheadBulgarianSplitSquat",
+        40: "overheadDumbbellReverseLunge",
+        41: "overheadDumbbellSplitSquat",
+        42: "overheadLungeWithRotation",
+        43: "reverseBarbellBoxLunge",
+        44: "reverseBoxLunge",
+        45: "reverseDumbbellBoxLunge",
+        46: "reverseDumbbellCrossoverLunge",
+        47: "reverseDumbbellDiagonalLunge",
+        48: "reverseLungeWithReachBack",
+        49: "weightedReverseLungeWithReachBack",
+        50: "reverseLungeWithTwistAndOverheadReach",
+        51: "weightedReverseLungeWithTwistAndOverheadReach",
+        52: "reverseSlidingBoxLunge",
+        53: "weightedReverseSlidingBoxLunge",
+        54: "reverseSlidingLunge",
+        55: "weightedReverseSlidingLunge",
+        56: "runnersLungeToBalance",
+        57: "weightedRunnersLungeToBalance",
+        58: "shiftingSideLunge",
+        59: "sideAndCrossoverLunge",
+        60: "weightedSideAndCrossoverLunge",
+        61: "sideLunge",
+        62: "weightedSideLunge",
+        63: "sideLungeAndPress",
+        64: "sideLungeJumpOff",
+        65: "sideLungeSweep",
+        66: "weightedSideLungeSweep",
+        67: "sideLungeToCrossoverTap",
+        68: "weightedSideLungeToCrossoverTap",
+        69: "sideToSideLungeChops",
+        70: "weightedSideToSideLungeChops",
+        71: "siffJumpLunge",
+        72: "weightedSiffJumpLunge",
+        73: "singleArmReverseLungeAndPress",
+        74: "slidingLateralLunge",
+        75: "weightedSlidingLateralLunge",
+        76: "walkingBarbellLunge",
+        77: "walkingDumbbellLunge",
+        78: "walkingLunge",
+        79: "weightedWalkingLunge",
+        80: "wideGripOverheadBarbellSplitSquat",
+        81: "alternatingDumbbellLunge",
+        82: "dumbbellReverseLunge",
+        83: "overheadDumbbellLunge",
+        84: "scissorPowerSwitch",
+        85: "dumbbellOverheadWalkingLunge",
+        86: "curtsyLunge",
+        87: "weightedCurtsyLunge",
+        88: "weightedShiftingSideLunge",
+        89: "weightedSideLungeAndPress",
+        90: "weightedSideLungeJumpOff"
+      },
+      olympicLiftExerciseName: {
+        0: "barbellHangPowerClean",
+        1: "barbellHangSquatClean",
+        2: "barbellPowerClean",
+        3: "barbellPowerSnatch",
+        4: "barbellSquatClean",
+        5: "cleanAndJerk",
+        6: "barbellHangPowerSnatch",
+        7: "barbellHangPull",
+        8: "barbellHighPull",
+        9: "barbellSnatch",
+        10: "barbellSplitJerk",
+        11: "clean",
+        12: "dumbbellClean",
+        13: "dumbbellHangPull",
+        14: "oneHandDumbbellSplitSnatch",
+        15: "pushJerk",
+        16: "singleArmDumbbellSnatch",
+        17: "singleArmHangSnatch",
+        18: "singleArmKettlebellSnatch",
+        19: "splitJerk",
+        20: "squatCleanAndJerk",
+        21: "dumbbellHangSnatch",
+        22: "dumbbellPowerCleanAndJerk",
+        23: "dumbbellPowerCleanAndPushPress",
+        24: "dumbbellPowerCleanAndStrictPress",
+        25: "dumbbellSnatch",
+        26: "medicineBallClean",
+        27: "cleanAndPress",
+        28: "snatch"
+      },
+      plankExerciseName: {
+        0: "45DegreePlank",
+        1: "weighted45DegreePlank",
+        2: "90DegreeStaticHold",
+        3: "weighted90DegreeStaticHold",
+        4: "bearCrawl",
+        5: "weightedBearCrawl",
+        6: "crossBodyMountainClimber",
+        7: "weightedCrossBodyMountainClimber",
+        8: "elbowPlankPikeJacks",
+        9: "weightedElbowPlankPikeJacks",
+        10: "elevatedFeetPlank",
+        11: "weightedElevatedFeetPlank",
+        12: "elevatorAbs",
+        13: "weightedElevatorAbs",
+        14: "extendedPlank",
+        15: "weightedExtendedPlank",
+        16: "fullPlankPasseTwist",
+        17: "weightedFullPlankPasseTwist",
+        18: "inchingElbowPlank",
+        19: "weightedInchingElbowPlank",
+        20: "inchwormToSidePlank",
+        21: "weightedInchwormToSidePlank",
+        22: "kneelingPlank",
+        23: "weightedKneelingPlank",
+        24: "kneelingSidePlankWithLegLift",
+        25: "weightedKneelingSidePlankWithLegLift",
+        26: "lateralRoll",
+        27: "weightedLateralRoll",
+        28: "lyingReversePlank",
+        29: "weightedLyingReversePlank",
+        30: "medicineBallMountainClimber",
+        31: "weightedMedicineBallMountainClimber",
+        32: "modifiedMountainClimberAndExtension",
+        33: "weightedModifiedMountainClimberAndExtension",
+        34: "mountainClimber",
+        35: "weightedMountainClimber",
+        36: "mountainClimberOnSlidingDiscs",
+        37: "weightedMountainClimberOnSlidingDiscs",
+        38: "mountainClimberWithFeetOnBosuBall",
+        39: "weightedMountainClimberWithFeetOnBosuBall",
+        40: "mountainClimberWithHandsOnBench",
+        41: "mountainClimberWithHandsOnSwissBall",
+        42: "weightedMountainClimberWithHandsOnSwissBall",
+        43: "plank",
+        44: "plankJacksWithFeetOnSlidingDiscs",
+        45: "weightedPlankJacksWithFeetOnSlidingDiscs",
+        46: "plankKneeTwist",
+        47: "weightedPlankKneeTwist",
+        48: "plankPikeJumps",
+        49: "weightedPlankPikeJumps",
+        50: "plankPikes",
+        51: "weightedPlankPikes",
+        52: "plankToStandUp",
+        53: "weightedPlankToStandUp",
+        54: "plankWithArmRaise",
+        55: "weightedPlankWithArmRaise",
+        56: "plankWithKneeToElbow",
+        57: "weightedPlankWithKneeToElbow",
+        58: "plankWithObliqueCrunch",
+        59: "weightedPlankWithObliqueCrunch",
+        60: "plyometricSidePlank",
+        61: "weightedPlyometricSidePlank",
+        62: "rollingSidePlank",
+        63: "weightedRollingSidePlank",
+        64: "sideKickPlank",
+        65: "weightedSideKickPlank",
+        66: "sidePlank",
+        67: "weightedSidePlank",
+        68: "sidePlankAndRow",
+        69: "weightedSidePlankAndRow",
+        70: "sidePlankLift",
+        71: "weightedSidePlankLift",
+        72: "sidePlankWithElbowOnBosuBall",
+        73: "weightedSidePlankWithElbowOnBosuBall",
+        74: "sidePlankWithFeetOnBench",
+        75: "weightedSidePlankWithFeetOnBench",
+        76: "sidePlankWithKneeCircle",
+        77: "weightedSidePlankWithKneeCircle",
+        78: "sidePlankWithKneeTuck",
+        79: "weightedSidePlankWithKneeTuck",
+        80: "sidePlankWithLegLift",
+        81: "weightedSidePlankWithLegLift",
+        82: "sidePlankWithReachUnder",
+        83: "weightedSidePlankWithReachUnder",
+        84: "singleLegElevatedFeetPlank",
+        85: "weightedSingleLegElevatedFeetPlank",
+        86: "singleLegFlexAndExtend",
+        87: "weightedSingleLegFlexAndExtend",
+        88: "singleLegSidePlank",
+        89: "weightedSingleLegSidePlank",
+        90: "spidermanPlank",
+        91: "weightedSpidermanPlank",
+        92: "straightArmPlank",
+        93: "weightedStraightArmPlank",
+        94: "straightArmPlankWithShoulderTouch",
+        95: "weightedStraightArmPlankWithShoulderTouch",
+        96: "swissBallPlank",
+        97: "weightedSwissBallPlank",
+        98: "swissBallPlankLegLift",
+        99: "weightedSwissBallPlankLegLift",
+        100: "swissBallPlankLegLiftAndHold",
+        101: "swissBallPlankWithFeetOnBench",
+        102: "weightedSwissBallPlankWithFeetOnBench",
+        103: "swissBallProneJackknife",
+        104: "weightedSwissBallProneJackknife",
+        105: "swissBallSidePlank",
+        106: "weightedSwissBallSidePlank",
+        107: "threeWayPlank",
+        108: "weightedThreeWayPlank",
+        109: "towelPlankAndKneeIn",
+        110: "weightedTowelPlankAndKneeIn",
+        111: "tStabilization",
+        112: "weightedTStabilization",
+        113: "turkishGetUpToSidePlank",
+        114: "weightedTurkishGetUpToSidePlank",
+        115: "twoPointPlank",
+        116: "weightedTwoPointPlank",
+        117: "weightedPlank",
+        118: "wideStancePlankWithDiagonalArmLift",
+        119: "weightedWideStancePlankWithDiagonalArmLift",
+        120: "wideStancePlankWithDiagonalLegLift",
+        121: "weightedWideStancePlankWithDiagonalLegLift",
+        122: "wideStancePlankWithLegLift",
+        123: "weightedWideStancePlankWithLegLift",
+        124: "wideStancePlankWithOppositeArmAndLegLift",
+        125: "weightedMountainClimberWithHandsOnBench",
+        126: "weightedSwissBallPlankLegLiftAndHold",
+        127: "weightedWideStancePlankWithOppositeArmAndLegLift",
+        128: "plankWithFeetOnSwissBall",
+        129: "sidePlankToPlankWithReachUnder",
+        130: "bridgeWithGluteLowerLift",
+        131: "bridgeOneLegBridge",
+        132: "plankWithArmVariations",
+        133: "plankWithLegLift",
+        134: "reversePlankWithLegPull",
+        135: "ringPlankSprawls"
+      },
+      plyoExerciseName: {
+        0: "alternatingJumpLunge",
+        1: "weightedAlternatingJumpLunge",
+        2: "barbellJumpSquat",
+        3: "bodyWeightJumpSquat",
+        4: "weightedJumpSquat",
+        5: "crossKneeStrike",
+        6: "weightedCrossKneeStrike",
+        7: "depthJump",
+        8: "weightedDepthJump",
+        9: "dumbbellJumpSquat",
+        10: "dumbbellSplitJump",
+        11: "frontKneeStrike",
+        12: "weightedFrontKneeStrike",
+        13: "highBoxJump",
+        14: "weightedHighBoxJump",
+        15: "isometricExplosiveBodyWeightJumpSquat",
+        16: "weightedIsometricExplosiveJumpSquat",
+        17: "lateralLeapAndHop",
+        18: "weightedLateralLeapAndHop",
+        19: "lateralPlyoSquats",
+        20: "weightedLateralPlyoSquats",
+        21: "lateralSlide",
+        22: "weightedLateralSlide",
+        23: "medicineBallOverheadThrows",
+        24: "medicineBallSideThrow",
+        25: "medicineBallSlam",
+        26: "sideToSideMedicineBallThrows",
+        27: "sideToSideShuffleJump",
+        28: "weightedSideToSideShuffleJump",
+        29: "squatJumpOntoBox",
+        30: "weightedSquatJumpOntoBox",
+        31: "squatJumpsInAndOut",
+        32: "weightedSquatJumpsInAndOut",
+        33: "boxJump",
+        34: "boxJumpOvers",
+        35: "boxJumpOversOverTheBox",
+        36: "starJumpSquats",
+        37: "jumpSquat"
+      },
+      pullUpExerciseName: {
+        0: "bandedPullUps",
+        1: "30DegreeLatPulldown",
+        2: "bandAssistedChinUp",
+        3: "closeGripChinUp",
+        4: "weightedCloseGripChinUp",
+        5: "closeGripLatPulldown",
+        6: "crossoverChinUp",
+        7: "weightedCrossoverChinUp",
+        8: "ezBarPullover",
+        9: "hangingHurdle",
+        10: "weightedHangingHurdle",
+        11: "kneelingLatPulldown",
+        12: "kneelingUnderhandGripLatPulldown",
+        13: "latPulldown",
+        14: "mixedGripChinUp",
+        15: "weightedMixedGripChinUp",
+        16: "mixedGripPullUp",
+        17: "weightedMixedGripPullUp",
+        18: "reverseGripPulldown",
+        19: "standingCablePullover",
+        20: "straightArmPulldown",
+        21: "swissBallEzBarPullover",
+        22: "towelPullUp",
+        23: "weightedTowelPullUp",
+        24: "weightedPullUp",
+        25: "wideGripLatPulldown",
+        26: "wideGripPullUp",
+        27: "weightedWideGripPullUp",
+        28: "burpeePullUp",
+        29: "weightedBurpeePullUp",
+        30: "jumpingPullUps",
+        31: "weightedJumpingPullUps",
+        32: "kippingPullUp",
+        33: "weightedKippingPullUp",
+        34: "lPullUp",
+        35: "weightedLPullUp",
+        36: "suspendedChinUp",
+        37: "weightedSuspendedChinUp",
+        38: "pullUp",
+        39: "chinUp",
+        40: "neutralGripChinUp",
+        41: "weightedChinUp",
+        42: "bandAssistedPullUp",
+        43: "neutralGripPullUp",
+        44: "weightedNeutralGripChinUp",
+        45: "weightedNeutralGripPullUp"
+      },
+      pushUpExerciseName: {
+        0: "chestPressWithBand",
+        1: "alternatingStaggeredPushUp",
+        2: "weightedAlternatingStaggeredPushUp",
+        3: "alternatingHandsMedicineBallPushUp",
+        4: "weightedAlternatingHandsMedicineBallPushUp",
+        5: "bosuBallPushUp",
+        6: "weightedBosuBallPushUp",
+        7: "clappingPushUp",
+        8: "weightedClappingPushUp",
+        9: "closeGripMedicineBallPushUp",
+        10: "weightedCloseGripMedicineBallPushUp",
+        11: "closeHandsPushUp",
+        12: "weightedCloseHandsPushUp",
+        13: "declinePushUp",
+        14: "weightedDeclinePushUp",
+        15: "diamondPushUp",
+        16: "weightedDiamondPushUp",
+        17: "explosiveCrossoverPushUp",
+        18: "weightedExplosiveCrossoverPushUp",
+        19: "explosivePushUp",
+        20: "weightedExplosivePushUp",
+        21: "feetElevatedSideToSidePushUp",
+        22: "weightedFeetElevatedSideToSidePushUp",
+        23: "handReleasePushUp",
+        24: "weightedHandReleasePushUp",
+        25: "handstandPushUp",
+        26: "weightedHandstandPushUp",
+        27: "inclinePushUp",
+        28: "weightedInclinePushUp",
+        29: "isometricExplosivePushUp",
+        30: "weightedIsometricExplosivePushUp",
+        31: "judoPushUp",
+        32: "weightedJudoPushUp",
+        33: "kneelingPushUp",
+        34: "weightedKneelingPushUp",
+        35: "medicineBallChestPass",
+        36: "medicineBallPushUp",
+        37: "weightedMedicineBallPushUp",
+        38: "oneArmPushUp",
+        39: "weightedOneArmPushUp",
+        40: "weightedPushUp",
+        41: "pushUpAndRow",
+        42: "weightedPushUpAndRow",
+        43: "pushUpPlus",
+        44: "weightedPushUpPlus",
+        45: "pushUpWithFeetOnSwissBall",
+        46: "weightedPushUpWithFeetOnSwissBall",
+        47: "pushUpWithOneHandOnMedicineBall",
+        48: "weightedPushUpWithOneHandOnMedicineBall",
+        49: "shoulderPushUp",
+        50: "weightedShoulderPushUp",
+        51: "singleArmMedicineBallPushUp",
+        52: "weightedSingleArmMedicineBallPushUp",
+        53: "spidermanPushUp",
+        54: "weightedSpidermanPushUp",
+        55: "stackedFeetPushUp",
+        56: "weightedStackedFeetPushUp",
+        57: "staggeredHandsPushUp",
+        58: "weightedStaggeredHandsPushUp",
+        59: "suspendedPushUp",
+        60: "weightedSuspendedPushUp",
+        61: "swissBallPushUp",
+        62: "weightedSwissBallPushUp",
+        63: "swissBallPushUpPlus",
+        64: "weightedSwissBallPushUpPlus",
+        65: "tPushUp",
+        66: "weightedTPushUp",
+        67: "tripleStopPushUp",
+        68: "weightedTripleStopPushUp",
+        69: "wideHandsPushUp",
+        70: "weightedWideHandsPushUp",
+        71: "paralletteHandstandPushUp",
+        72: "weightedParalletteHandstandPushUp",
+        73: "ringHandstandPushUp",
+        74: "weightedRingHandstandPushUp",
+        75: "ringPushUp",
+        76: "weightedRingPushUp",
+        77: "pushUp",
+        78: "pilatesPushup",
+        79: "dynamicPushUp",
+        80: "kippingHandstandPushUp",
+        81: "shoulderTappingPushUp",
+        82: "bicepsPushUp",
+        83: "hinduPushUp",
+        84: "pikePushUp",
+        85: "wideGripPushUp",
+        86: "weightedBicepsPushUp",
+        87: "weightedHinduPushUp",
+        88: "weightedPikePushUp",
+        89: "kippingParalletteHandstandPushUp",
+        90: "wallPushUp"
+      },
+      rowExerciseName: {
+        0: "barbellStraightLegDeadliftToRow",
+        1: "cableRowStanding",
+        2: "dumbbellRow",
+        3: "elevatedFeetInvertedRow",
+        4: "weightedElevatedFeetInvertedRow",
+        5: "facePull",
+        6: "facePullWithExternalRotation",
+        7: "invertedRowWithFeetOnSwissBall",
+        8: "weightedInvertedRowWithFeetOnSwissBall",
+        9: "kettlebellRow",
+        10: "modifiedInvertedRow",
+        11: "weightedModifiedInvertedRow",
+        12: "neutralGripAlternatingDumbbellRow",
+        13: "oneArmBentOverRow",
+        14: "oneLeggedDumbbellRow",
+        15: "renegadeRow",
+        16: "reverseGripBarbellRow",
+        17: "ropeHandleCableRow",
+        18: "seatedCableRow",
+        19: "seatedDumbbellRow",
+        20: "singleArmCableRow",
+        21: "singleArmCableRowAndRotation",
+        22: "singleArmInvertedRow",
+        23: "weightedSingleArmInvertedRow",
+        24: "singleArmNeutralGripDumbbellRow",
+        25: "singleArmNeutralGripDumbbellRowAndRotation",
+        26: "suspendedInvertedRow",
+        27: "weightedSuspendedInvertedRow",
+        28: "tBarRow",
+        29: "towelGripInvertedRow",
+        30: "weightedTowelGripInvertedRow",
+        31: "underhandGripCableRow",
+        32: "vGripCableRow",
+        33: "wideGripSeatedCableRow",
+        34: "alternatingDumbbellRow",
+        35: "invertedRow",
+        36: "row",
+        37: "weightedRow",
+        38: "indoorRow",
+        39: "bandedFacePulls",
+        40: "chestSupportedDumbbellRow",
+        41: "declineRingRow",
+        42: "elevatedRingRow",
+        43: "rdlBentOverRowWithBarbellDumbbell",
+        44: "ringRow",
+        45: "barbellRow",
+        46: "bentOverRowWithBarbell",
+        47: "bentOverRowWithDumbell",
+        48: "seatedUnderhandGripCableRow",
+        49: "trxInvertedRow",
+        50: "weightedInvertedRow",
+        51: "weightedTrxInvertedRow",
+        52: "dumbbellRowWheelchair"
+      },
+      shoulderPressExerciseName: {
+        0: "alternatingDumbbellShoulderPress",
+        1: "arnoldPress",
+        2: "barbellFrontSquatToPushPress",
+        3: "barbellPushPress",
+        4: "barbellShoulderPress",
+        5: "deadCurlPress",
+        6: "dumbbellAlternatingShoulderPressAndTwist",
+        7: "dumbbellHammerCurlToLungeToPress",
+        8: "dumbbellPushPress",
+        9: "floorInvertedShoulderPress",
+        10: "weightedFloorInvertedShoulderPress",
+        11: "invertedShoulderPress",
+        12: "weightedInvertedShoulderPress",
+        13: "oneArmPushPress",
+        14: "overheadBarbellPress",
+        15: "overheadDumbbellPress",
+        16: "seatedBarbellShoulderPress",
+        17: "seatedDumbbellShoulderPress",
+        18: "singleArmDumbbellShoulderPress",
+        19: "singleArmStepUpAndPress",
+        20: "smithMachineOverheadPress",
+        21: "splitStanceHammerCurlToPress",
+        22: "swissBallDumbbellShoulderPress",
+        23: "weightPlateFrontRaise",
+        24: "dumbbellShoulderPress",
+        25: "militaryPress",
+        27: "strictPress",
+        28: "dumbbellFrontRaise",
+        29: "dumbbellCurlToOverheadPressWheelchair",
+        30: "arnoldPressWheelchair",
+        31: "overheadDumbbellPressWheelchair"
+      },
+      shoulderStabilityExerciseName: {
+        0: "90DegreeCableExternalRotation",
+        1: "bandExternalRotation",
+        2: "bandInternalRotation",
+        3: "bentArmLateralRaiseAndExternalRotation",
+        4: "cableExternalRotation",
+        5: "dumbbellFacePullWithExternalRotation",
+        6: "floorIRaise",
+        7: "weightedFloorIRaise",
+        8: "floorTRaise",
+        9: "weightedFloorTRaise",
+        10: "floorYRaise",
+        11: "weightedFloorYRaise",
+        12: "inclineIRaise",
+        13: "weightedInclineIRaise",
+        14: "inclineLRaise",
+        15: "weightedInclineLRaise",
+        16: "inclineTRaise",
+        17: "weightedInclineTRaise",
+        18: "inclineWRaise",
+        19: "weightedInclineWRaise",
+        20: "inclineYRaise",
+        21: "weightedInclineYRaise",
+        22: "lyingExternalRotation",
+        23: "seatedDumbbellExternalRotation",
+        24: "standingLRaise",
+        25: "swissBallIRaise",
+        26: "weightedSwissBallIRaise",
+        27: "swissBallTRaise",
+        28: "weightedSwissBallTRaise",
+        29: "swissBallWRaise",
+        30: "weightedSwissBallWRaise",
+        31: "swissBallYRaise",
+        32: "weightedSwissBallYRaise",
+        33: "cableInternalRotation",
+        34: "lyingInternalRotation",
+        35: "seatedDumbbellInternalRotation"
+      },
+      shrugExerciseName: {
+        0: "barbellJumpShrug",
+        1: "barbellShrug",
+        2: "barbellUprightRow",
+        3: "behindTheBackSmithMachineShrug",
+        4: "dumbbellJumpShrug",
+        5: "dumbbellShrug",
+        6: "dumbbellUprightRow",
+        7: "inclineDumbbellShrug",
+        8: "overheadBarbellShrug",
+        9: "overheadDumbbellShrug",
+        10: "scaptionAndShrug",
+        11: "scapularRetraction",
+        12: "serratusChairShrug",
+        13: "weightedSerratusChairShrug",
+        14: "serratusShrug",
+        15: "weightedSerratusShrug",
+        16: "wideGripJumpShrug",
+        17: "wideGripBarbellShrug",
+        18: "behindTheBackShrug",
+        19: "dumbbellShrugWheelchair",
+        20: "shrugWheelchair",
+        21: "shrugArmDownWheelchair",
+        22: "shrugArmMidWheelchair",
+        23: "shrugArmUpWheelchair",
+        24: "uprightRow"
+      },
+      sitUpExerciseName: {
+        0: "alternatingSitUp",
+        1: "weightedAlternatingSitUp",
+        2: "bentKneeVUp",
+        3: "weightedBentKneeVUp",
+        4: "butterflySitUp",
+        5: "weightedButterflySitup",
+        6: "crossPunchRollUp",
+        7: "weightedCrossPunchRollUp",
+        8: "crossedArmsSitUp",
+        9: "weightedCrossedArmsSitUp",
+        10: "getUpSitUp",
+        11: "weightedGetUpSitUp",
+        12: "hoveringSitUp",
+        13: "weightedHoveringSitUp",
+        14: "kettlebellSitUp",
+        15: "medicineBallAlternatingVUp",
+        16: "medicineBallSitUp",
+        17: "medicineBallVUp",
+        18: "modifiedSitUp",
+        19: "negativeSitUp",
+        20: "oneArmFullSitUp",
+        21: "recliningCircle",
+        22: "weightedRecliningCircle",
+        23: "reverseCurlUp",
+        24: "weightedReverseCurlUp",
+        25: "singleLegSwissBallJackknife",
+        26: "weightedSingleLegSwissBallJackknife",
+        27: "theTeaser",
+        28: "theTeaserWeighted",
+        29: "threePartRollDown",
+        30: "weightedThreePartRollDown",
+        31: "vUp",
+        32: "weightedVUp",
+        33: "weightedRussianTwistOnSwissBall",
+        34: "weightedSitUp",
+        35: "xAbs",
+        36: "weightedXAbs",
+        37: "sitUp",
+        38: "ghdSitUps",
+        39: "sitUpTurkishGetUp",
+        40: "russianTwistOnSwissBall"
+      },
+      squatExerciseName: {
+        0: "legPress",
+        1: "backSquatWithBodyBar",
+        2: "backSquats",
+        3: "weightedBackSquats",
+        4: "balancingSquat",
+        5: "weightedBalancingSquat",
+        6: "barbellBackSquat",
+        7: "barbellBoxSquat",
+        8: "barbellFrontSquat",
+        9: "barbellHackSquat",
+        10: "barbellHangSquatSnatch",
+        11: "barbellLateralStepUp",
+        12: "barbellQuarterSquat",
+        13: "barbellSiffSquat",
+        14: "barbellSquatSnatch",
+        15: "barbellSquatWithHeelsRaised",
+        16: "barbellStepover",
+        17: "barbellStepUp",
+        18: "benchSquatWithRotationalChop",
+        19: "weightedBenchSquatWithRotationalChop",
+        20: "bodyWeightWallSquat",
+        21: "weightedWallSquat",
+        22: "boxStepSquat",
+        23: "weightedBoxStepSquat",
+        24: "bracedSquat",
+        25: "crossedArmBarbellFrontSquat",
+        26: "crossoverDumbbellStepUp",
+        27: "dumbbellFrontSquat",
+        28: "dumbbellSplitSquat",
+        29: "dumbbellSquat",
+        30: "dumbbellSquatClean",
+        31: "dumbbellStepover",
+        32: "dumbbellStepUp",
+        33: "elevatedSingleLegSquat",
+        34: "weightedElevatedSingleLegSquat",
+        35: "figureFourSquats",
+        36: "weightedFigureFourSquats",
+        37: "gobletSquat",
+        38: "kettlebellSquat",
+        39: "kettlebellSwingOverhead",
+        40: "kettlebellSwingWithFlipToSquat",
+        41: "lateralDumbbellStepUp",
+        42: "oneLeggedSquat",
+        43: "overheadDumbbellSquat",
+        44: "overheadSquat",
+        45: "partialSingleLegSquat",
+        46: "weightedPartialSingleLegSquat",
+        47: "pistolSquat",
+        48: "weightedPistolSquat",
+        49: "plieSlides",
+        50: "weightedPlieSlides",
+        51: "plieSquat",
+        52: "weightedPlieSquat",
+        53: "prisonerSquat",
+        54: "weightedPrisonerSquat",
+        55: "singleLegBenchGetUp",
+        56: "weightedSingleLegBenchGetUp",
+        57: "singleLegBenchSquat",
+        58: "weightedSingleLegBenchSquat",
+        59: "singleLegSquatOnSwissBall",
+        60: "weightedSingleLegSquatOnSwissBall",
+        61: "squat",
+        62: "weightedSquat",
+        63: "squatsWithBand",
+        64: "staggeredSquat",
+        65: "weightedStaggeredSquat",
+        66: "stepUp",
+        67: "weightedStepUp",
+        68: "suitcaseSquats",
+        69: "sumoSquat",
+        70: "sumoSquatSlideIn",
+        71: "weightedSumoSquatSlideIn",
+        72: "sumoSquatToHighPull",
+        73: "sumoSquatToStand",
+        74: "weightedSumoSquatToStand",
+        75: "sumoSquatWithRotation",
+        76: "weightedSumoSquatWithRotation",
+        77: "swissBallBodyWeightWallSquat",
+        78: "weightedSwissBallWallSquat",
+        79: "thrusters",
+        80: "unevenSquat",
+        81: "weightedUnevenSquat",
+        82: "waistSlimmingSquat",
+        83: "wallBall",
+        84: "wideStanceBarbellSquat",
+        85: "wideStanceGobletSquat",
+        86: "zercherSquat",
+        87: "kbsOverhead",
+        // Deprecated do not use
+        88: "squatAndSideKick",
+        89: "squatJumpsInNOut",
+        90: "pilatesPlieSquatsParallelTurnedOutFlatAndHeels",
+        91: "releveStraightLegAndKneeBentWithOneLegVariation",
+        92: "alternatingBoxDumbbellStepUps",
+        93: "dumbbellOverheadSquatSingleArm",
+        94: "dumbbellSquatSnatch",
+        95: "medicineBallSquat",
+        97: "wallBallSquatAndPress",
+        98: "squatAmericanSwing",
+        100: "airSquat",
+        101: "dumbbellThrusters",
+        102: "overheadBarbellSquat"
+      },
+      totalBodyExerciseName: {
+        0: "burpee",
+        1: "weightedBurpee",
+        2: "burpeeBoxJump",
+        3: "weightedBurpeeBoxJump",
+        4: "highPullBurpee",
+        5: "manMakers",
+        6: "oneArmBurpee",
+        7: "squatThrusts",
+        8: "weightedSquatThrusts",
+        9: "squatPlankPushUp",
+        10: "weightedSquatPlankPushUp",
+        11: "standingTRotationBalance",
+        12: "weightedStandingTRotationBalance",
+        13: "barbellBurpee",
+        15: "burpeeBoxJumpOverYesLiterallyJumpingOverTheBox",
+        16: "burpeeBoxJumpStepUpOver",
+        17: "lateralBarbellBurpee",
+        18: "totalBodyBurpeeOverBar",
+        19: "burpeeBoxJumpOver",
+        20: "burpeeWheelchair"
+      },
+      moveExerciseName: {
+        0: "archAndCurl",
+        1: "armCirclesWithBallBandAndWeight",
+        2: "armStretch",
+        3: "backMassage",
+        4: "bellyBreathing",
+        5: "bridgeWithBall",
+        6: "diamondLegCrunch",
+        7: "diamondLegLift",
+        8: "eightPointShoulderOpener",
+        9: "footRolling",
+        10: "footwork",
+        11: "footworkOnDisc",
+        12: "forwardFold",
+        13: "frogWithBand",
+        14: "halfRollUp",
+        15: "hamstringCurl",
+        16: "hamstringStretch",
+        17: "hipStretch",
+        18: "hugATreeWithBallBandAndWeight",
+        19: "kneeCircles",
+        20: "kneeFoldsOnDisc",
+        21: "lateralFlexion",
+        22: "legStretchWithBand",
+        23: "legStretchWithLegCircles",
+        24: "lowerLiftOnDisc",
+        25: "lungeSquat",
+        26: "lungesWithKneeLift",
+        27: "mermaidStretch",
+        28: "neutralPelvicPosition",
+        29: "pelvicClocksOnDisc",
+        30: "pilatesPlieSquatsParallelTurnedOutFlatAndHeelsWithChair",
+        31: "piriformisStretch",
+        32: "plankKneeCrosses",
+        33: "plankKneePulls",
+        34: "plankUpDowns",
+        35: "prayerMudra",
+        36: "psoasLungeStretch",
+        37: "ribcageBreathing",
+        38: "rollDown",
+        39: "rollUpWithWeightAndBand",
+        40: "saw",
+        41: "scapularStabilization",
+        42: "scissorsOnDisc",
+        43: "seatedHipStretchup",
+        44: "seatedTwist",
+        45: "shavingTheHeadWithBallBandAndWeight",
+        46: "spinalTwist",
+        47: "spinalTwistStretch",
+        48: "spineStretchForward",
+        49: "squatOpenArmTwistPose",
+        50: "squatsWithBall",
+        51: "standAndHang",
+        52: "standingSideStretch",
+        53: "standingSingleLegForwardBendWithItBandOpener",
+        54: "straightLegCrunchWithLegLift",
+        55: "straightLegCrunchWithLegLiftWithBall",
+        56: "straightLegCrunchWithLegsCrossed",
+        57: "straightLegCrunchWithLegsCrossedWithBall",
+        58: "straightLegDiagonalCrunch",
+        59: "straightLegDiagonalCrunchWithBall",
+        60: "tailboneCurl",
+        61: "throatLock",
+        62: "tickTockSideRoll",
+        63: "twist",
+        64: "vLegCrunches",
+        65: "vSit",
+        66: "forwardFoldWheelchair",
+        67: "forwardFoldPlusWheelchair",
+        68: "armCirclesLowForwardWheelchair",
+        69: "armCirclesMidForwardWheelchair",
+        70: "armCirclesHighForwardWheelchair",
+        71: "armCirclesLowBackwardWheelchair",
+        72: "armCirclesMidBackwardWheelchair",
+        73: "armCirclesHighBackwardWheelchair",
+        74: "coreTwistsWheelchair",
+        75: "armRaiseWheelchair",
+        76: "chestExpandWheelchair",
+        77: "armExtendWheelchair",
+        78: "forwardBendWheelchair",
+        79: "toeTouchWheelchair",
+        80: "extendedToeTouchWheelchair",
+        81: "seatedArmCircles",
+        82: "trunkRotations",
+        83: "seatedTrunkRotations",
+        84: "toeTouch"
+      },
+      poseExerciseName: {
+        0: "allFours",
+        1: "ankleToKnee",
+        2: "babyCobra",
+        3: "boat",
+        4: "boundAngle",
+        5: "boundSeatedSingleLegForwardBend",
+        6: "bow",
+        7: "bowedHalfMoon",
+        8: "bridge",
+        9: "cat",
+        10: "chair",
+        11: "childs",
+        12: "corpse",
+        13: "cowFace",
+        14: "cow",
+        15: "devotionalWarrior",
+        16: "dolphinPlank",
+        17: "dolphin",
+        18: "downDogKneeToNose",
+        19: "downDogSplit",
+        20: "downDogSplitOpenHipBentKnee",
+        21: "downwardFacingDog",
+        22: "eagle",
+        23: "easySeated",
+        24: "extendedPuppy",
+        25: "extendedSideAngle",
+        26: "fish",
+        27: "fourLimbedStaff",
+        28: "fullSplit",
+        29: "gate",
+        30: "halfChairHalfAnkleToKnee",
+        31: "halfMoon",
+        32: "headToKnee",
+        33: "heron",
+        34: "heros",
+        35: "highLunge",
+        36: "kneesChestChin",
+        37: "lizard",
+        38: "locust",
+        39: "lowLunge",
+        40: "lowLungeTwist",
+        41: "lowLungeWithKneeDown",
+        42: "mermaid",
+        43: "mountain",
+        44: "oneLeggedDownwardFacingPoseOpenHipBentKnee",
+        45: "oneLeggedPigeon",
+        46: "peacefulWarrior",
+        47: "plank",
+        48: "plow",
+        49: "reclinedHandToFoot",
+        50: "revolvedHalfMoon",
+        51: "revolvedHeadToKnee",
+        52: "revolvedTriangle",
+        53: "runnersLunge",
+        54: "seatedEasySideBend",
+        55: "seatedEasyTwist",
+        56: "seatedLongLegForwardBend",
+        57: "seatedWideLegForwardBend",
+        58: "shoulderStand",
+        59: "sideBoat",
+        60: "sidePlank",
+        61: "sphinx",
+        62: "squatOpenArmTwist",
+        63: "squatPalmPress",
+        64: "staff",
+        65: "standingArmsUp",
+        66: "standingForwardBendHalfwayUp",
+        67: "standingForwardBend",
+        68: "standingSideOpener",
+        69: "standingSingleLegForwardBend",
+        70: "standingSplit",
+        71: "standingWideLegForwardBend",
+        72: "standingWideLegForwardBendWithTwist",
+        73: "supineSpinalTwist",
+        74: "tableTop",
+        75: "threadTheNeedle",
+        76: "thunderbolt",
+        77: "thunderboltPoseBothSidesArmStretch",
+        78: "tree",
+        79: "triangle",
+        80: "upDog",
+        81: "upwardFacingPlank",
+        82: "warriorOne",
+        83: "warriorThree",
+        84: "warriorTwo",
+        85: "wheel",
+        86: "wideSideLunge",
+        87: "deepBreathingWheelchair",
+        88: "deepBreathingLowWheelchair",
+        89: "deepBreathingMidWheelchair",
+        90: "deepBreathingHighWheelchair",
+        91: "prayerWheelchair",
+        92: "overheadPrayerWheelchair",
+        93: "cactusWheelchair",
+        94: "breathingPunchesWheelchair",
+        95: "breathingPunchesExtendedWheelchair",
+        96: "breathingPunchesOverheadWheelchair",
+        97: "breathingPunchesOverheadAndDownWheelchair",
+        98: "breathingPunchesSideWheelchair",
+        99: "breathingPunchesExtendedSideWheelchair",
+        100: "breathingPunchesOverheadSideWheelchair",
+        101: "breathingPunchesOverheadAndDownSideWheelchair",
+        102: "leftHandBackWheelchair",
+        103: "triangleWheelchair",
+        104: "threadTheNeedleWheelchair",
+        105: "neckFlexionAndExtensionWheelchair",
+        106: "neckLateralFlexionWheelchair",
+        107: "spineFlexionAndExtensionWheelchair",
+        108: "spineRotationWheelchair",
+        109: "spineLateralFlexionWheelchair",
+        110: "alternativeSkiingWheelchair",
+        111: "reachForwardWheelchair",
+        112: "warriorWheelchair",
+        113: "reverseWarriorWheelchair",
+        114: "downwardFacingDogToCobra",
+        115: "seatedCatCow"
+      },
+      tricepsExtensionExerciseName: {
+        0: "benchDip",
+        1: "weightedBenchDip",
+        2: "bodyWeightDip",
+        3: "cableKickback",
+        4: "cableLyingTricepsExtension",
+        5: "cableOverheadTricepsExtension",
+        6: "dumbbellKickback",
+        7: "dumbbellLyingTricepsExtension",
+        8: "ezBarOverheadTricepsExtension",
+        9: "inclineDip",
+        10: "weightedInclineDip",
+        11: "inclineEzBarLyingTricepsExtension",
+        12: "lyingDumbbellPulloverToExtension",
+        13: "lyingEzBarTricepsExtension",
+        14: "lyingTricepsExtensionToCloseGripBenchPress",
+        15: "overheadDumbbellTricepsExtension",
+        16: "recliningTricepsPress",
+        17: "reverseGripPressdown",
+        18: "reverseGripTricepsPressdown",
+        19: "ropePressdown",
+        20: "seatedBarbellOverheadTricepsExtension",
+        21: "seatedDumbbellOverheadTricepsExtension",
+        22: "seatedEzBarOverheadTricepsExtension",
+        23: "seatedSingleArmOverheadDumbbellExtension",
+        24: "singleArmDumbbellOverheadTricepsExtension",
+        25: "singleDumbbellSeatedOverheadTricepsExtension",
+        26: "singleLegBenchDipAndKick",
+        27: "weightedSingleLegBenchDipAndKick",
+        28: "singleLegDip",
+        29: "weightedSingleLegDip",
+        30: "staticLyingTricepsExtension",
+        31: "suspendedDip",
+        32: "weightedSuspendedDip",
+        33: "swissBallDumbbellLyingTricepsExtension",
+        34: "swissBallEzBarLyingTricepsExtension",
+        35: "swissBallEzBarOverheadTricepsExtension",
+        36: "tabletopDip",
+        37: "weightedTabletopDip",
+        38: "tricepsExtensionOnFloor",
+        39: "tricepsPressdown",
+        40: "weightedDip",
+        41: "alternatingDumbbellLyingTricepsExtension",
+        42: "tricepsPress",
+        43: "dumbbellKickbackWheelchair",
+        44: "overheadDumbbellTricepsExtensionWheelchair"
+      },
+      warmUpExerciseName: {
+        0: "quadrupedRocking",
+        1: "neckTilts",
+        2: "ankleCircles",
+        3: "ankleDorsiflexionWithBand",
+        4: "ankleInternalRotation",
+        5: "armCircles",
+        6: "bentOverReachToSky",
+        7: "catCamel",
+        8: "elbowToFootLunge",
+        9: "forwardAndBackwardLegSwings",
+        10: "groiners",
+        11: "invertedHamstringStretch",
+        12: "lateralDuckUnder",
+        13: "neckRotations",
+        14: "oppositeArmAndLegBalance",
+        15: "reachRollAndLift",
+        16: "scorpion",
+        // Deprecated do not use
+        17: "shoulderCircles",
+        18: "sideToSideLegSwings",
+        19: "sleeperStretch",
+        20: "slideOut",
+        21: "swissBallHipCrossover",
+        22: "swissBallReachRollAndLift",
+        23: "swissBallWindshieldWipers",
+        24: "thoracicRotation",
+        25: "walkingHighKicks",
+        26: "walkingHighKnees",
+        27: "walkingKneeHugs",
+        28: "walkingLegCradles",
+        29: "walkout",
+        30: "walkoutFromPushUpPosition",
+        31: "bicepsStretch",
+        32: "glutesStretch",
+        33: "standingHamstringStretch",
+        34: "stretch90_90",
+        35: "stretchAbs",
+        36: "stretchButterfly",
+        37: "stretchCalf",
+        38: "stretchCatCow",
+        39: "stretchChildsPose",
+        40: "stretchCobra",
+        41: "stretchForearms",
+        42: "stretchForwardGlutes",
+        43: "stretchFrontSplit",
+        44: "stretchHamstring",
+        45: "stretchHipFlexorAndQuad",
+        46: "stretchLat",
+        47: "stretchLevatorScapulae",
+        48: "stretchLungeWithSpinalTwist",
+        49: "stretchLungingHipFlexor",
+        50: "stretchLyingAbduction",
+        51: "stretchLyingItBand",
+        52: "stretchLyingKneeToChest",
+        53: "stretchLyingPiriformis",
+        54: "stretchLyingSpinalTwist",
+        55: "stretchNeck",
+        56: "stretchObliques",
+        57: "stretchOverUnderShoulder",
+        58: "stretchPectoral",
+        59: "stretchPigeonPose",
+        60: "stretchPiriformis",
+        61: "stretchQuad",
+        62: "stretchScorpion",
+        63: "stretchShoulder",
+        64: "stretchSide",
+        65: "stretchSideLunge",
+        66: "stretchSideSplit",
+        67: "stretchStandingItBand",
+        68: "stretchStraddle",
+        69: "stretchTriceps",
+        70: "stretchWallChestAndShoulder",
+        71: "neckRotationsWheelchair",
+        72: "halfKneelingArmRotation",
+        73: "threeWayAnkleMobilization",
+        74: "ninetyNinetyHipSwitch",
+        // 90_90_hip_switch
+        75: "activeFrog",
+        76: "shoulderSweeps",
+        77: "ankleLunges",
+        78: "backRollFoamRoller",
+        79: "bearCrawl",
+        80: "latissimusDorsiFoamRoll",
+        81: "reverseTHipOpener",
+        82: "shoulderRolls",
+        83: "chestOpeners",
+        84: "tricepsStretch",
+        85: "upperBackStretch",
+        86: "hipCircles",
+        87: "ankleStretch",
+        88: "marchingInPlace",
+        89: "tricepsStretchWheelchair",
+        90: "upperBackStretchWheelchair"
+      },
+      runExerciseName: {
+        0: "run",
+        1: "walk",
+        2: "jog",
+        3: "sprint",
+        4: "runOrWalk",
+        5: "speedWalk",
+        6: "warmUp"
+      },
+      bikeExerciseName: {
+        0: "bike",
+        1: "ride",
+        2: "sprint"
+      },
+      bandedExercisesExerciseName: {
+        1: "abTwist",
+        2: "backExtension",
+        3: "bicycleCrunch",
+        4: "calfRaises",
+        5: "chestPress",
+        6: "clamShells",
+        7: "curl",
+        8: "deadbug",
+        9: "deadlift",
+        10: "donkeyKick",
+        11: "externalRotation",
+        12: "externalRotationAt90DegreeAbduction",
+        13: "facePull",
+        14: "fireHydrant",
+        15: "fly",
+        16: "frontRaise",
+        17: "gluteBridge",
+        18: "hamstringCurls",
+        19: "highPlankLegLifts",
+        20: "hipExtension",
+        21: "internalRotation",
+        22: "jumpingJack",
+        23: "kneelingCrunch",
+        24: "lateralBandWalks",
+        25: "lateralRaise",
+        26: "latpull",
+        27: "legAbduction",
+        28: "legAdduction",
+        29: "legExtension",
+        30: "lunge",
+        31: "plank",
+        32: "pullApart",
+        33: "pushUps",
+        34: "reverseCrunch",
+        35: "row",
+        36: "shoulderAbduction",
+        37: "shoulderExtension",
+        38: "shoulderExternalRotation",
+        39: "shoulderFlexionTo90Degrees",
+        40: "sidePlankLegLifts",
+        41: "sideRaise",
+        42: "squat",
+        43: "squatToPress",
+        44: "tricepExtension",
+        45: "tricepKickback",
+        46: "uprightRow",
+        47: "wallCrawlWithExternalRotation",
+        49: "lateralRaiseWheelchair",
+        50: "tricepsExtensionWheelchair",
+        51: "chestFlyInclineWheelchair",
+        52: "chestFlyDeclineWheelchair",
+        53: "pullDownWheelchair",
+        54: "straightArmPullDownWheelchair",
+        55: "curlWheelchair",
+        56: "overheadCurlWheelchair",
+        57: "facePullWheelchair",
+        58: "aroundTheWorldWheelchair",
+        59: "pullApartWheelchair",
+        60: "sideCurlWheelchair",
+        61: "overheadPressWheelchair"
+      },
+      battleRopeExerciseName: {
+        0: "alternatingFigureEight",
+        1: "alternatingJumpWave",
+        2: "alternatingKneelingToStandingWave",
+        3: "alternatingLungeWave",
+        4: "alternatingSquatWave",
+        5: "alternatingWave",
+        6: "alternatingWaveWithLateralShuffle",
+        7: "clapWave",
+        8: "doubleArmFigureEight",
+        9: "doubleArmSideToSideSnake",
+        10: "doubleArmSideWave",
+        11: "doubleArmSlam",
+        12: "doubleArmWave",
+        13: "grapplerToss",
+        14: "hipToss",
+        15: "inAndOutWave",
+        16: "insideCircle",
+        17: "jumpingJacks",
+        18: "outsideCircle",
+        19: "rainbow",
+        20: "sidePlankWave",
+        21: "sidewinder",
+        22: "sittingRussianTwist",
+        23: "snakeWave",
+        24: "splitJack",
+        25: "stageCoach",
+        26: "ultimateWarrior",
+        27: "upperCuts"
+      },
+      ellipticalExerciseName: {
+        0: "elliptical"
+      },
+      floorClimbExerciseName: {
+        0: "floorClimb"
+      },
+      indoorBikeExerciseName: {
+        0: "airBike",
+        1: "assaultBike",
+        3: "stationaryBike"
+      },
+      indoorRowExerciseName: {
+        0: "rowingMachine"
+      },
+      ladderExerciseName: {
+        0: "agility",
+        1: "speed"
+      },
+      sandbagExerciseName: {
+        0: "aroundTheWorld",
+        1: "backSquat",
+        2: "bearCrawlPullThrough",
+        3: "bearHugSquat",
+        4: "clean",
+        5: "cleanAndPress",
+        6: "curl",
+        7: "frontCarry",
+        8: "frontSquat",
+        9: "lunge",
+        10: "overheadPress",
+        11: "plankPullThrough",
+        12: "rotationalLunge",
+        13: "row",
+        14: "russianTwist",
+        15: "shouldering",
+        16: "shoveling",
+        17: "sideLunge",
+        18: "sprint",
+        19: "zercherSquat"
+      },
+      sledExerciseName: {
+        0: "backwardDrag",
+        1: "chestPress",
+        2: "forwardDrag",
+        3: "lowPush",
+        4: "push",
+        5: "row"
+      },
+      sledgeHammerExerciseName: {
+        0: "lateralSwing",
+        1: "hammerSlam"
+      },
+      stairStepperExerciseName: {
+        0: "stairStepper"
+      },
+      suspensionExerciseName: {
+        0: "chestFly",
+        1: "chestPress",
+        2: "crunch",
+        3: "curl",
+        4: "dip",
+        5: "facePull",
+        6: "gluteBridge",
+        7: "hamstringCurl",
+        8: "hipDrop",
+        9: "invertedRow",
+        10: "kneeDriveJump",
+        11: "kneeToChest",
+        12: "latPullover",
+        13: "lunge",
+        14: "mountainClimber",
+        15: "pendulum",
+        16: "pike",
+        17: "plank",
+        18: "powerPull",
+        19: "pullUp",
+        20: "pushUp",
+        21: "reverseMountainClimber",
+        22: "reversePlank",
+        23: "rollout",
+        24: "row",
+        25: "sideLunge",
+        26: "sidePlank",
+        27: "singleLegDeadlift",
+        28: "singleLegSquat",
+        29: "sitUp",
+        30: "split",
+        31: "squat",
+        32: "squatJump",
+        33: "tricepPress",
+        34: "yFly"
+      },
+      tireExerciseName: {
+        0: "flip"
+      },
+      bikeOutdoorExerciseName: {
+        0: "bike"
+      },
+      runIndoorExerciseName: {
+        0: "indoorTrackRun",
+        1: "treadmill"
+      },
+      waterType: {
+        0: "fresh",
+        1: "salt",
+        2: "en13319",
+        3: "custom"
+      },
+      tissueModelType: {
+        0: "zhl16c"
+        // Buhlmann's decompression algorithm, version C
+      },
+      diveGasStatus: {
+        0: "disabled",
+        1: "enabled",
+        2: "backupOnly"
+      },
+      diveAlert: {
+        0: "ndlReached",
+        1: "gasSwitchPrompted",
+        2: "nearSurface",
+        3: "approachingNdl",
+        4: "po2Warn",
+        5: "po2CritHigh",
+        6: "po2CritLow",
+        7: "timeAlert",
+        8: "depthAlert",
+        9: "decoCeilingBroken",
+        10: "decoComplete",
+        11: "safetyStopBroken",
+        12: "safetyStopComplete",
+        13: "cnsWarning",
+        14: "cnsCritical",
+        15: "otuWarning",
+        16: "otuCritical",
+        17: "ascentCritical",
+        18: "alertDismissedByKey",
+        19: "alertDismissedByTimeout",
+        20: "batteryLow",
+        21: "batteryCritical",
+        22: "safetyStopStarted",
+        23: "approachingFirstDecoStop",
+        24: "setpointSwitchAutoLow",
+        25: "setpointSwitchAutoHigh",
+        26: "setpointSwitchManualLow",
+        27: "setpointSwitchManualHigh",
+        28: "autoSetpointSwitchIgnored",
+        29: "switchedToOpenCircuit",
+        30: "switchedToClosedCircuit",
+        32: "tankBatteryLow",
+        33: "po2CcrDilLow",
+        // ccr diluent has low po2
+        34: "decoStopCleared",
+        // a deco stop has been cleared
+        35: "apneaNeutralBuoyancy",
+        // Target Depth Apnea Alarm triggered
+        36: "apneaTargetDepth",
+        // Neutral Buoyance Apnea Alarm triggered
+        37: "apneaSurface",
+        // Surface Apnea Alarm triggered
+        38: "apneaHighSpeed",
+        // High Speed Apnea Alarm triggered
+        39: "apneaLowSpeed"
+        // Low Speed Apnea Alarm triggered
+      },
+      diveAlarmType: {
+        0: "depth",
+        // Alarm when a certain depth is crossed
+        1: "time",
+        // Alarm when a certain time has transpired
+        2: "speed"
+        // Alarm when a certain ascent or descent rate is exceeded
+      },
+      diveBacklightMode: {
+        0: "atDepth",
+        1: "alwaysOn"
+      },
+      sleepLevel: {
+        0: "unmeasurable",
+        1: "awake",
+        2: "light",
+        3: "deep",
+        4: "rem"
+      },
+      spo2MeasurementType: {
+        0: "offWrist",
+        1: "spotCheck",
+        2: "continuousCheck",
+        3: "periodic"
+      },
+      ccrSetpointSwitchMode: {
+        0: "manual",
+        // User switches setpoints manually
+        1: "automatic"
+        // Switch automatically based on depth
+      },
+      diveGasMode: {
+        0: "openCircuit",
+        1: "closedCircuitDiluent"
+      },
+      projectileType: {
+        0: "arrow",
+        // Arrow projectile type
+        1: "rifleCartridge",
+        // Rifle cartridge projectile type
+        2: "pistolCartridge",
+        // Pistol cartridge projectile type
+        3: "shotshell",
+        // Shotshell projectile type
+        4: "airRiflePellet",
+        // Air rifle pellet projectile type
+        5: "other"
+        // Other projectile type
+      },
+      faveroProduct: {
+        10: "assiomaUno",
+        12: "assiomaDuo"
+      },
+      splitType: {
+        1: "ascentSplit",
+        2: "descentSplit",
+        3: "intervalActive",
+        4: "intervalRest",
+        5: "intervalWarmup",
+        6: "intervalCooldown",
+        7: "intervalRecovery",
+        8: "intervalOther",
+        9: "climbActive",
+        10: "climbRest",
+        11: "surfActive",
+        12: "runActive",
+        13: "runRest",
+        14: "workoutRound",
+        17: "rwdRun",
+        // run/walk detection running
+        18: "rwdWalk",
+        // run/walk detection walking
+        21: "windsurfActive",
+        22: "rwdStand",
+        // run/walk detection standing
+        23: "transition",
+        // Marks the time going from ascent_split to descent_split/used in backcountry ski
+        28: "skiLiftSplit",
+        29: "skiRunSplit"
+      },
+      climbProEvent: {
+        0: "approach",
+        1: "start",
+        2: "complete"
+      },
+      gasConsumptionRateType: {
+        0: "pressureSac",
+        // Pressure-based Surface Air Consumption
+        1: "volumeSac",
+        // Volumetric Surface Air Consumption
+        2: "rmv"
+        // Respiratory Minute Volume
+      },
+      tapSensitivity: {
+        0: "high",
+        1: "medium",
+        2: "low"
+      },
+      radarThreatLevelType: {
+        0: "threatUnknown",
+        1: "threatNone",
+        2: "threatApproaching",
+        3: "threatApproachingFast"
+      },
+      sleepDisruptionSeverity: {
+        0: "none",
+        1: "low",
+        2: "medium",
+        3: "high"
+      },
+      napPeriodFeedback: {
+        0: "none",
+        1: "multipleNapsDuringDay",
+        2: "jetlagIdealTimingIdealDuration",
+        3: "jetlagIdealTimingLongDuration",
+        4: "jetlagLateTimingIdealDuration",
+        5: "jetlagLateTimingLongDuration",
+        6: "idealTimingIdealDurationLowNeed",
+        7: "idealTimingIdealDurationHighNeed",
+        8: "idealTimingLongDurationLowNeed",
+        9: "idealTimingLongDurationHighNeed",
+        10: "lateTimingIdealDurationLowNeed",
+        11: "lateTimingIdealDurationHighNeed",
+        12: "lateTimingLongDurationLowNeed",
+        13: "lateTimingLongDurationHighNeed",
+        14: "idealDurationLowNeed",
+        15: "idealDurationHighNeed",
+        16: "longDurationLowNeed",
+        17: "longDurationHighNeed"
+      },
+      napSource: {
+        0: "automatic",
+        1: "manualDevice",
+        2: "manualGc"
+      },
+      maxMetSpeedSource: {
+        0: "onboardGps",
+        1: "connectedGps",
+        2: "cadence"
+      },
+      maxMetHeartRateSource: {
+        0: "whr",
+        // Wrist Heart Rate Monitor
+        1: "hrm"
+        // Chest Strap Heart Rate Monitor
+      },
+      hrvStatus: {
+        0: "none",
+        1: "poor",
+        2: "low",
+        3: "unbalanced",
+        4: "balanced"
+      },
+      noFlyTimeMode: {
+        0: "standard",
+        // Standard Diver Alert Network no-fly guidance
+        1: "flat24Hours"
+        // Flat 24 hour no-fly guidance
+      }
+    },
+    MesgNum: {
+      FILE_ID: 0,
+      FILE_CREATOR: 49,
+      TIMESTAMP_CORRELATION: 162,
+      SOFTWARE: 35,
+      SLAVE_DEVICE: 106,
+      CAPABILITIES: 1,
+      FILE_CAPABILITIES: 37,
+      MESG_CAPABILITIES: 38,
+      FIELD_CAPABILITIES: 39,
+      DEVICE_SETTINGS: 2,
+      USER_PROFILE: 3,
+      HRM_PROFILE: 4,
+      SDM_PROFILE: 5,
+      BIKE_PROFILE: 6,
+      CONNECTIVITY: 127,
+      WATCHFACE_SETTINGS: 159,
+      OHR_SETTINGS: 188,
+      TIME_IN_ZONE: 216,
+      ZONES_TARGET: 7,
+      SPORT: 12,
+      HR_ZONE: 8,
+      SPEED_ZONE: 53,
+      CADENCE_ZONE: 131,
+      POWER_ZONE: 9,
+      MET_ZONE: 10,
+      TRAINING_SETTINGS: 13,
+      DIVE_SETTINGS: 258,
+      DIVE_ALARM: 262,
+      DIVE_APNEA_ALARM: 393,
+      DIVE_GAS: 259,
+      GOAL: 15,
+      ACTIVITY: 34,
+      SESSION: 18,
+      LAP: 19,
+      LENGTH: 101,
+      RECORD: 20,
+      EVENT: 21,
+      DEVICE_INFO: 23,
+      DEVICE_AUX_BATTERY_INFO: 375,
+      TRAINING_FILE: 72,
+      WEATHER_CONDITIONS: 128,
+      WEATHER_ALERT: 129,
+      GPS_METADATA: 160,
+      CAMERA_EVENT: 161,
+      GYROSCOPE_DATA: 164,
+      ACCELEROMETER_DATA: 165,
+      MAGNETOMETER_DATA: 208,
+      BAROMETER_DATA: 209,
+      THREE_D_SENSOR_CALIBRATION: 167,
+      ONE_D_SENSOR_CALIBRATION: 210,
+      VIDEO_FRAME: 169,
+      OBDII_DATA: 174,
+      NMEA_SENTENCE: 177,
+      AVIATION_ATTITUDE: 178,
+      VIDEO: 184,
+      VIDEO_TITLE: 185,
+      VIDEO_DESCRIPTION: 186,
+      VIDEO_CLIP: 187,
+      SET: 225,
+      JUMP: 285,
+      SPLIT: 312,
+      SPLIT_SUMMARY: 313,
+      CLIMB_PRO: 317,
+      FIELD_DESCRIPTION: 206,
+      DEVELOPER_DATA_ID: 207,
+      COURSE: 31,
+      COURSE_POINT: 32,
+      SEGMENT_ID: 148,
+      SEGMENT_LEADERBOARD_ENTRY: 149,
+      SEGMENT_POINT: 150,
+      SEGMENT_LAP: 142,
+      SEGMENT_FILE: 151,
+      WORKOUT: 26,
+      WORKOUT_SESSION: 158,
+      WORKOUT_STEP: 27,
+      EXERCISE_TITLE: 264,
+      SCHEDULE: 28,
+      TOTALS: 33,
+      WEIGHT_SCALE: 30,
+      BLOOD_PRESSURE: 51,
+      MONITORING_INFO: 103,
+      MONITORING: 55,
+      MONITORING_HR_DATA: 211,
+      SPO2_DATA: 269,
+      HR: 132,
+      STRESS_LEVEL: 227,
+      MAX_MET_DATA: 229,
+      HSA_BODY_BATTERY_DATA: 314,
+      HSA_EVENT: 315,
+      HSA_ACCELEROMETER_DATA: 302,
+      HSA_GYROSCOPE_DATA: 376,
+      HSA_STEP_DATA: 304,
+      HSA_SPO2_DATA: 305,
+      HSA_STRESS_DATA: 306,
+      HSA_RESPIRATION_DATA: 307,
+      HSA_HEART_RATE_DATA: 308,
+      HSA_CONFIGURATION_DATA: 389,
+      HSA_WRIST_TEMPERATURE_DATA: 409,
+      MEMO_GLOB: 145,
+      SLEEP_LEVEL: 275,
+      ANT_CHANNEL_ID: 82,
+      ANT_RX: 80,
+      ANT_TX: 81,
+      EXD_SCREEN_CONFIGURATION: 200,
+      EXD_DATA_FIELD_CONFIGURATION: 201,
+      EXD_DATA_CONCEPT_CONFIGURATION: 202,
+      DIVE_SUMMARY: 268,
+      AAD_ACCEL_FEATURES: 289,
+      HRV: 78,
+      BEAT_INTERVALS: 290,
+      HRV_STATUS_SUMMARY: 370,
+      HRV_VALUE: 371,
+      RAW_BBI: 372,
+      RESPIRATION_RATE: 297,
+      CHRONO_SHOT_SESSION: 387,
+      CHRONO_SHOT_DATA: 388,
+      TANK_UPDATE: 319,
+      TANK_SUMMARY: 323,
+      SLEEP_ASSESSMENT: 346,
+      SLEEP_DISRUPTION_SEVERITY_PERIOD: 470,
+      SLEEP_DISRUPTION_OVERNIGHT_SEVERITY: 471,
+      NAP_EVENT: 412,
+      SKIN_TEMP_OVERNIGHT: 398,
+      PAD: 105
+    }
+  };
+  var profile_default = Profile;
+
+  // node_modules/@garmin/fitsdk/src/utils-memo-glob.js
+  var decodeMemoGlobs = (messages) => {
+    if ((messages?.memoGlobMesgs?.length ?? 0) == 0) {
+      return;
+    }
+    const memoGlobMesgs = messages.memoGlobMesgs;
+    const groupedMemoGlobs = Object.groupBy(memoGlobMesgs, ({ mesgNum, parentIndex, fieldNum }) => {
+      return JSON.stringify({
+        mesgNum,
+        parentIndex,
+        fieldNum
+      });
+    });
+    Object.entries(groupedMemoGlobs).forEach(([key, memoGlobMesgs2]) => {
+      const { mesgNum, parentIndex, fieldNum } = JSON.parse(key);
+      memoGlobMesgs2.sort((a, b) => a.partIndex - b.partIndex);
+      const mesgProfile = Object.values(profile_default.messages).find((mesgDefinition) => {
+        return mesgDefinition.name == mesgNum || mesgDefinition.num == mesgNum;
+      });
+      const targetMesg = messages[mesgProfile?.messagesKey ?? mesgNum]?.[parentIndex];
+      if (targetMesg == null) {
+        return;
+      }
+      const targetFieldKey = mesgProfile?.fields?.[fieldNum]?.name ?? fieldNum;
+      const memoGlobBytes = memoGlobMesgs2.reduce((accumluatedBytes, mesg) => {
+        return accumluatedBytes.concat(mesg.data);
+      }, []);
+      targetMesg[targetFieldKey] = decodeMemoGlobBytesToUtf8(memoGlobBytes);
+    });
+  };
+  var decodeMemoGlobBytesToUtf8 = (memoGlobBytes) => {
+    let decoder = new TextDecoder("utf-8");
+    let bytes = new Uint8Array(memoGlobBytes);
+    return decoder.decode(bytes);
+  };
+  var utils_memo_glob_default = {
+    decodeMemoGlobs,
+    decodeMemoGlobBytesToUtf8
+  };
+
+  // node_modules/@garmin/fitsdk/src/utils-internal.js
+  var sanitizeValues = (values, { legacyArrayMode = false, isArray = false } = {}) => {
+    if (onlyNullValues(values)) {
+      return null;
+    }
+    if (legacyArrayMode) {
+      return values.length === 1 ? values[0] : values;
+    }
+    if (isArray) {
+      return values;
+    }
+    return values[0];
+  };
+  var trimStringTrailingNulls = (string) => {
+    if (string == null) {
+      return;
+    }
+    let strings = string.split("\0");
+    while (strings[strings.length - 1] === "") {
+      strings.pop();
+      if (strings.length === 0) {
+        return "";
+      }
+    }
+    return strings.length === 1 ? strings[0] : strings;
+  };
+  var onlyNullValues = (values) => values.every((value) => value == null);
+  var onlyInvalidValues = (rawFieldValue, invalidValue) => {
+    if (Array.isArray(rawFieldValue)) {
+      return rawFieldValue.every((value) => value === invalidValue);
+    }
+    return rawFieldValue === invalidValue;
+  };
+  var utils_internal_default = {
+    sanitizeValues,
+    trimStringTrailingNulls,
+    onlyNullValues,
+    onlyInvalidValues
+  };
+
+  // node_modules/@garmin/fitsdk/src/stream.js
+  var _position, _arrayBuffer, _dataView, _textDecoder, _crcCalculator, _legacyArrayMode, _Stream_instances, readSingleValue_fn;
+  var _Stream = class _Stream {
+    constructor(arrayBuffer) {
+      __privateAdd(this, _Stream_instances);
+      __privateAdd(this, _position, 0);
+      __privateAdd(this, _arrayBuffer, null);
+      __privateAdd(this, _dataView, null);
+      __privateAdd(this, _textDecoder, new TextDecoder("utf-8", { fatal: false, ignoreBOM: true }));
+      __privateAdd(this, _crcCalculator, null);
+      __privateAdd(this, _legacyArrayMode, false);
+      __privateSet(this, _position, 0);
+      __privateSet(this, _arrayBuffer, arrayBuffer);
+      __privateSet(this, _dataView, new DataView(arrayBuffer));
+    }
+    static fromByteArray(data) {
+      const buf = new Uint8Array(data);
+      return this.fromArrayBuffer(buf.buffer);
+    }
+    static fromBuffer(buffer) {
+      const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      return this.fromArrayBuffer(arrayBuffer);
+    }
+    static fromArrayBuffer(arrayBuffer) {
+      const stream = new _Stream(arrayBuffer);
+      return stream;
+    }
+    get length() {
+      return __privateGet(this, _arrayBuffer).byteLength;
+    }
+    get bytesRead() {
+      return __privateGet(this, _position);
+    }
+    get position() {
+      return __privateGet(this, _position);
+    }
+    get crcCalculator() {
+      return __privateGet(this, _crcCalculator);
+    }
+    set crcCalculator(crcCalculator) {
+      __privateSet(this, _crcCalculator, crcCalculator);
+    }
+    get legacyArrayMode() {
+      return __privateGet(this, _legacyArrayMode);
+    }
+    set legacyArrayMode(legacyArrayMode) {
+      __privateSet(this, _legacyArrayMode, legacyArrayMode);
+    }
+    reset() {
+      this.seek(0);
+    }
+    seek(position) {
+      __privateSet(this, _position, position);
+    }
+    slice(begin, end) {
+      return __privateGet(this, _arrayBuffer).slice(begin, end);
+    }
+    peekByte() {
+      return __privateGet(this, _dataView).getUint8(__privateGet(this, _position));
+    }
+    readByte() {
+      return this.readUInt8();
+    }
+    readBytes(size) {
+      if (__privateGet(this, _position) + size > __privateGet(this, _arrayBuffer).byteLength) {
+        throw Error(`FIT Runtime Error end of stream at byte ${__privateGet(this, _position)}`);
+      }
+      const bytes = new Uint8Array(__privateGet(this, _arrayBuffer), __privateGet(this, _position), size);
+      __privateSet(this, _position, __privateGet(this, _position) + size);
+      __privateGet(this, _crcCalculator)?.addBytes(bytes, 0, size);
+      return bytes;
+    }
+    readUInt8(opts) {
+      return this.readValue(fit_default.BaseType.UINT8, 1, { convertInvalidToNull: false, ...opts });
+    }
+    readInt8(opts) {
+      return this.readValue(fit_default.BaseType.SINT8, 1, { convertInvalidToNull: false, ...opts });
+    }
+    readUInt16(opts) {
+      return this.readValue(fit_default.BaseType.UINT16, 2, { convertInvalidToNull: false, ...opts });
+    }
+    readInt16(opts) {
+      return this.readValue(fit_default.BaseType.SINT16, 2, { convertInvalidToNull: false, ...opts });
+    }
+    readUInt32(opts) {
+      return this.readValue(fit_default.BaseType.UINT32, 4, { convertInvalidToNull: false, ...opts });
+    }
+    readInt32(opts) {
+      return this.readValue(fit_default.BaseType.SINT32, 4, { convertInvalidToNull: false, ...opts });
+    }
+    readUInt64(opts) {
+      return this.readValue(fit_default.BaseType.UINT64, 8, { convertInvalidToNull: false, ...opts });
+    }
+    readInt64(opts) {
+      return this.readValue(fit_default.BaseType.SINT64, 8, { convertInvalidToNull: false, ...opts });
+    }
+    readFloat32(opts) {
+      return this.readValue(fit_default.BaseType.FLOAT32, 4, { convertInvalidToNull: false, ...opts });
+    }
+    readFloat64(opts) {
+      return this.readValue(fit_default.BaseType.FLOAT64, 8, { convertInvalidToNull: false, ...opts });
+    }
+    readString(strlen, opts = {}) {
+      return this.readValue(fit_default.BaseType.STRING, strlen, opts);
+    }
+    asUint8Array() {
+      return new Uint8Array(__privateGet(this, _arrayBuffer));
+    }
+    readValue(baseType, size, {
+      littleEndian = true,
+      convertInvalidToNull = true,
+      isArray = false
+    } = {}) {
+      const baseTypeDef = fit_default.BaseTypeDefinitions[baseType];
+      const baseTypeSize = baseTypeDef.size;
+      const baseTypeInvalid = baseTypeDef.invalid;
+      const startPos = __privateGet(this, _position);
+      const bytes = this.readBytes(size);
+      if (size % baseTypeSize !== 0) {
+        return convertInvalidToNull ? null : baseTypeInvalid;
+      }
+      if (baseType === fit_default.BaseType.STRING) {
+        const string = __privateGet(this, _textDecoder).decode(bytes).replace(/\uFFFD/g, "");
+        const strings = string.split(fit_default.NULL_TERMINATOR);
+        while (strings[strings.length - 1] === "") {
+          strings.pop();
+        }
+        if (strings.length === 0) {
+          return null;
+        }
+        if (__privateGet(this, _legacyArrayMode)) {
+          return strings.length === 1 ? strings[0] : strings;
+        }
+        return strings[0];
+      }
+      const count = size / baseTypeSize;
+      if (count === 1) {
+        const value = __privateMethod(this, _Stream_instances, readSingleValue_fn).call(this, baseType, startPos, littleEndian);
+        if (convertInvalidToNull && value === baseTypeInvalid) {
+          return null;
+        }
+        if (!__privateGet(this, _legacyArrayMode) && !isArray) {
+          return value;
+        }
+        return utils_internal_default.sanitizeValues([value], { legacyArrayMode: __privateGet(this, _legacyArrayMode), isArray });
+      }
+      let values = [];
+      for (let i = 0; i < count; i++) {
+        values.push(__privateMethod(this, _Stream_instances, readSingleValue_fn).call(this, baseType, startPos + i * baseTypeSize, littleEndian));
+      }
+      if (convertInvalidToNull) {
+        if (utils_internal_default.onlyInvalidValues(values, baseTypeInvalid)) {
+          return null;
+        }
+        if (baseType !== fit_default.BaseType.BYTE) {
+          values = values.map((value) => value === baseTypeInvalid ? null : value);
+        }
+      }
+      return utils_internal_default.sanitizeValues(
+        values,
+        {
+          legacyArrayMode: __privateGet(this, _legacyArrayMode),
+          isArray
+        }
+      );
+    }
+  };
+  _position = new WeakMap();
+  _arrayBuffer = new WeakMap();
+  _dataView = new WeakMap();
+  _textDecoder = new WeakMap();
+  _crcCalculator = new WeakMap();
+  _legacyArrayMode = new WeakMap();
+  _Stream_instances = new WeakSet();
+  readSingleValue_fn = function(baseType, offset, littleEndian) {
+    switch (baseType) {
+      case fit_default.BaseType.BYTE:
+      case fit_default.BaseType.ENUM:
+      case fit_default.BaseType.UINT8:
+      case fit_default.BaseType.UINT8Z:
+        return __privateGet(this, _dataView).getUint8(offset);
+      case fit_default.BaseType.SINT8:
+        return __privateGet(this, _dataView).getInt8(offset);
+      case fit_default.BaseType.UINT16:
+      case fit_default.BaseType.UINT16Z:
+        return __privateGet(this, _dataView).getUint16(offset, littleEndian);
+      case fit_default.BaseType.SINT16:
+        return __privateGet(this, _dataView).getInt16(offset, littleEndian);
+      case fit_default.BaseType.UINT32:
+      case fit_default.BaseType.UINT32Z:
+        return __privateGet(this, _dataView).getUint32(offset, littleEndian);
+      case fit_default.BaseType.SINT32:
+        return __privateGet(this, _dataView).getInt32(offset, littleEndian);
+      case fit_default.BaseType.UINT64:
+      case fit_default.BaseType.UINT64Z:
+        return __privateGet(this, _dataView).getBigUint64(offset, littleEndian);
+      case fit_default.BaseType.SINT64:
+        return __privateGet(this, _dataView).getBigInt64(offset, littleEndian);
+      case fit_default.BaseType.FLOAT32:
+        return __privateGet(this, _dataView).getFloat32(offset, littleEndian);
+      case fit_default.BaseType.FLOAT64:
+        return __privateGet(this, _dataView).getFloat64(offset, littleEndian);
+      default:
+        throw new Error(`Unsupported FIT base type: ${baseType}`);
+    }
+  };
+  var Stream = _Stream;
+  var stream_default = Stream;
+
+  // node_modules/@garmin/fitsdk/src/decoder.js
+  var COMPRESSED_HEADER_MASK = 128;
+  var MESG_DEFINITION_MASK = 64;
+  var DEV_DATA_MASK = 32;
+  var MESG_HEADER_MASK = 0;
+  var LOCAL_MESG_NUM_MASK = 15;
+  var HEADER_WITH_CRC_SIZE = 14;
+  var HEADER_WITHOUT_CRC_SIZE = 12;
+  var CRC_SIZE = 2;
+  var PROFILE_VERSION_SCALE_CHANGE_VALUE = 2199;
+  var DecodeMode = Object.freeze({
+    NORMAL: "normal",
+    SKIP_HEADER: "skipHeader",
+    DATA_ONLY: "dataOnly"
+  });
+  var _localMessageDefinitions, _developerDataDefinitions, _stream, _accumulator, _messages2, _profileVersion, _fieldsWithSubFields, _fieldsToExpand, _decodeMode, _mesgListener, _mesgDefinitionListener, _fieldDescriptionListener, _optExpandSubFields, _optExpandComponents, _optApplyScaleAndOffset, _optConvertTypesToStrings, _optConvertDateTimesToDates, _optIncludeUnknownData, _optMergeHeartRates, _optDecodeMemoGlobs, _optLegacyArrayMode, _Decoder_instances, decodeNextFile_fn, decodeNextRecord_fn, decodeMessageDefinition_fn, decodeMessage_fn, decodeCompressedTimestampDataMessage_fn, readFieldValue_fn, readRawFieldValue_fn, readDeveloperFieldValue_fn, addDeveloperDataIdToProfile_fn, addFieldDescriptionToProfile_fn, lookupDeveloperDataField_fn, expandSubFields_fn, expandSubField_fn, expandComponents_fn, transformValues_fn, transformValue_fn, applyScaleAndOffset_fn, setAccumulatedField_fn, convertTypeToString_fn, lookupSubfield_fn, _Decoder_static, readFileHeader_fn, throwError_fn2, _expandProfileVersion;
+  var _Decoder = class _Decoder {
+    constructor(stream) {
+      __privateAdd(this, _Decoder_instances);
+      __privateAdd(this, _localMessageDefinitions, []);
+      __privateAdd(this, _developerDataDefinitions, {});
+      __privateAdd(this, _stream, null);
+      __privateAdd(this, _accumulator, new accumulator_default());
+      __privateAdd(this, _messages2, {});
+      __privateAdd(this, _profileVersion, null);
+      __privateAdd(this, _fieldsWithSubFields, []);
+      __privateAdd(this, _fieldsToExpand, []);
+      __privateAdd(this, _decodeMode, DecodeMode.NORMAL);
+      __privateAdd(this, _mesgListener, null);
+      __privateAdd(this, _mesgDefinitionListener, null);
+      __privateAdd(this, _fieldDescriptionListener, null);
+      __privateAdd(this, _optExpandSubFields, true);
+      __privateAdd(this, _optExpandComponents, true);
+      __privateAdd(this, _optApplyScaleAndOffset, true);
+      __privateAdd(this, _optConvertTypesToStrings, true);
+      __privateAdd(this, _optConvertDateTimesToDates, true);
+      __privateAdd(this, _optIncludeUnknownData, false);
+      __privateAdd(this, _optMergeHeartRates, true);
+      __privateAdd(this, _optDecodeMemoGlobs, false);
+      __privateAdd(this, _optLegacyArrayMode, false);
+      if (stream == null) {
+        throw Error("FIT Runtime Error stream parameter is null or undefined");
+      }
+      __privateSet(this, _stream, stream);
+    }
+    static isFIT(stream) {
+      var _a;
+      try {
+        const fileHeaderSize = stream.peekByte();
+        if ([HEADER_WITH_CRC_SIZE, HEADER_WITHOUT_CRC_SIZE].includes(fileHeaderSize) != true) {
+          return false;
+        }
+        if (stream.length < fileHeaderSize + CRC_SIZE) {
+          return false;
+        }
+        const fileHeader = __privateMethod(_a = _Decoder, _Decoder_static, readFileHeader_fn).call(_a, stream, { resetPosition: true });
+        if (fileHeader.dataType !== ".FIT") {
+          return false;
+        }
+      } catch (error) {
+        return false;
+      }
+      return true;
+    }
+    isFIT() {
+      return _Decoder.isFIT(__privateGet(this, _stream));
+    }
+    checkIntegrity() {
+      var _a;
+      try {
+        if (!this.isFIT()) {
+          return false;
+        }
+        const fileHeader = __privateMethod(_a = _Decoder, _Decoder_static, readFileHeader_fn).call(_a, __privateGet(this, _stream), { resetPosition: true });
+        if (__privateGet(this, _stream).length < fileHeader.headerSize + fileHeader.dataSize + CRC_SIZE) {
+          return false;
+        }
+        const buf = __privateGet(this, _stream).asUint8Array();
+        if (fileHeader.headerSize === HEADER_WITH_CRC_SIZE && fileHeader.headerCRC !== 0 && fileHeader.headerCRC != crc_calculator_default.calculateCRC(buf, 0, 12)) {
+          return false;
+        }
+        const fileCRC = (buf[fileHeader.headerSize + fileHeader.dataSize + 1] << 8) + buf[fileHeader.headerSize + fileHeader.dataSize];
+        if (fileCRC != crc_calculator_default.calculateCRC(buf, 0, fileHeader.headerSize + fileHeader.dataSize)) {
+          return false;
+        }
+      } catch (error) {
+        return false;
+      }
+      return true;
+    }
+    read({
+      mesgListener = null,
+      mesgDefinitionListener = null,
+      fieldDescriptionListener = null,
+      expandSubFields = true,
+      expandComponents = true,
+      applyScaleAndOffset = true,
+      convertTypesToStrings = true,
+      convertDateTimesToDates = true,
+      includeUnknownData = false,
+      mergeHeartRates: mergeHeartRates2 = true,
+      decodeMemoGlobs: decodeMemoGlobs2 = false,
+      skipHeader = false,
+      dataOnly = false,
+      legacyArrayMode = false
+    } = {}) {
+      __privateSet(this, _mesgListener, mesgListener);
+      __privateSet(this, _mesgDefinitionListener, mesgDefinitionListener);
+      __privateSet(this, _fieldDescriptionListener, fieldDescriptionListener);
+      __privateSet(this, _optExpandSubFields, expandSubFields);
+      __privateSet(this, _optExpandComponents, expandComponents);
+      __privateSet(this, _optApplyScaleAndOffset, applyScaleAndOffset);
+      __privateSet(this, _optConvertTypesToStrings, convertTypesToStrings);
+      __privateSet(this, _optConvertDateTimesToDates, convertDateTimesToDates);
+      __privateSet(this, _optIncludeUnknownData, includeUnknownData);
+      __privateSet(this, _optMergeHeartRates, mergeHeartRates2);
+      __privateSet(this, _optDecodeMemoGlobs, decodeMemoGlobs2);
+      __privateSet(this, _optLegacyArrayMode, legacyArrayMode);
+      __privateSet(this, _localMessageDefinitions, []);
+      __privateSet(this, _developerDataDefinitions, {});
+      __privateSet(this, _messages2, {});
+      __privateSet(this, _profileVersion, null);
+      const errors = [];
+      try {
+        if (__privateGet(this, _optLegacyArrayMode)) {
+          console.log("Decoder Warning: legacyArrayMode is deprecated and will be removed in the future. Afterwards, the default behavior will be equivalent to legacyArrayMode=false.");
+        }
+        if (__privateGet(this, _optMergeHeartRates) && (!__privateGet(this, _optApplyScaleAndOffset) || !__privateGet(this, _optExpandComponents))) {
+          __privateMethod(this, _Decoder_instances, throwError_fn2).call(this, "mergeHeartRates requires applyScaleAndOffset and expandComponents to be enabled");
+        }
+        if (dataOnly && skipHeader) {
+          __privateMethod(this, _Decoder_instances, throwError_fn2).call(this, "dataOnly and skipHeader cannot both be enabled");
+        }
+        __privateSet(this, _decodeMode, skipHeader ? DecodeMode.SKIP_HEADER : dataOnly ? DecodeMode.DATA_ONLY : DecodeMode.NORMAL);
+        __privateGet(this, _stream).legacyArrayMode = __privateGet(this, _optLegacyArrayMode);
+        while (__privateGet(this, _stream).position < __privateGet(this, _stream).length) {
+          __privateMethod(this, _Decoder_instances, decodeNextFile_fn).call(this);
+        }
+        if (__privateGet(this, _optMergeHeartRates)) {
+          utils_hr_mesg_default.mergeHeartRates(__privateGet(this, _messages2).hrMesgs, __privateGet(this, _messages2).recordMesgs);
+        }
+        if (__privateGet(this, _optDecodeMemoGlobs)) {
+          utils_memo_glob_default.decodeMemoGlobs(__privateGet(this, _messages2));
+        }
+      } catch (error) {
+        errors.push(error);
+      } finally {
+        return { messages: __privateGet(this, _messages2), profileVersion: __privateGet(this, _profileVersion), errors };
+      }
+    }
+  };
+  _localMessageDefinitions = new WeakMap();
+  _developerDataDefinitions = new WeakMap();
+  _stream = new WeakMap();
+  _accumulator = new WeakMap();
+  _messages2 = new WeakMap();
+  _profileVersion = new WeakMap();
+  _fieldsWithSubFields = new WeakMap();
+  _fieldsToExpand = new WeakMap();
+  _decodeMode = new WeakMap();
+  _mesgListener = new WeakMap();
+  _mesgDefinitionListener = new WeakMap();
+  _fieldDescriptionListener = new WeakMap();
+  _optExpandSubFields = new WeakMap();
+  _optExpandComponents = new WeakMap();
+  _optApplyScaleAndOffset = new WeakMap();
+  _optConvertTypesToStrings = new WeakMap();
+  _optConvertDateTimesToDates = new WeakMap();
+  _optIncludeUnknownData = new WeakMap();
+  _optMergeHeartRates = new WeakMap();
+  _optDecodeMemoGlobs = new WeakMap();
+  _optLegacyArrayMode = new WeakMap();
+  _Decoder_instances = new WeakSet();
+  decodeNextFile_fn = function() {
+    var _a;
+    const position = __privateGet(this, _stream).position;
+    if (__privateGet(this, _decodeMode) === DecodeMode.NORMAL && !this.isFIT()) {
+      __privateMethod(this, _Decoder_instances, throwError_fn2).call(this, "input is not a FIT file");
+    }
+    __privateGet(this, _stream).crcCalculator = new crc_calculator_default();
+    const { headerSize, dataSize, profileVersion } = __privateMethod(_a = _Decoder, _Decoder_static, readFileHeader_fn).call(_a, __privateGet(this, _stream), { decodeMode: __privateGet(this, _decodeMode) });
+    __privateGet(this, _profileVersion) ?? __privateSet(this, _profileVersion, profileVersion);
+    while (__privateGet(this, _stream).position < position + headerSize + dataSize) {
+      __privateMethod(this, _Decoder_instances, decodeNextRecord_fn).call(this);
+    }
+    const calculatedCrc = __privateGet(this, _stream).crcCalculator.crc;
+    const crc = __privateGet(this, _stream).readUInt16();
+    if (__privateGet(this, _decodeMode) === DecodeMode.NORMAL && crc !== calculatedCrc) {
+      __privateMethod(this, _Decoder_instances, throwError_fn2).call(this, "CRC error");
+    }
+  };
+  decodeNextRecord_fn = function() {
+    const recordHeader = __privateGet(this, _stream).peekByte();
+    if ((recordHeader & COMPRESSED_HEADER_MASK) === COMPRESSED_HEADER_MASK) {
+      return __privateMethod(this, _Decoder_instances, decodeCompressedTimestampDataMessage_fn).call(this);
+    }
+    if ((recordHeader & MESG_DEFINITION_MASK) === MESG_HEADER_MASK) {
+      return __privateMethod(this, _Decoder_instances, decodeMessage_fn).call(this);
+    }
+    if ((recordHeader & MESG_DEFINITION_MASK) === MESG_DEFINITION_MASK) {
+      return __privateMethod(this, _Decoder_instances, decodeMessageDefinition_fn).call(this);
+    }
+  };
+  decodeMessageDefinition_fn = function() {
+    var _a;
+    const recordHeader = __privateGet(this, _stream).readByte();
+    const messageDefinition = {};
+    messageDefinition["recordHeader"] = recordHeader;
+    messageDefinition["localMesgNum"] = recordHeader & LOCAL_MESG_NUM_MASK;
+    messageDefinition["reserved"] = __privateGet(this, _stream).readByte();
+    messageDefinition["architecture"] = __privateGet(this, _stream).readByte();
+    messageDefinition["endianness"] = messageDefinition.architecture === 0;
+    messageDefinition["globalMessageNumber"] = __privateGet(this, _stream).readUInt16({ littleEndian: messageDefinition["endianness"] });
+    messageDefinition["numFields"] = __privateGet(this, _stream).readByte();
+    messageDefinition["fieldDefinitions"] = [];
+    messageDefinition["developerFieldDefinitions"] = [];
+    messageDefinition["messageSize"] = 0;
+    messageDefinition["developerDataSize"] = 0;
+    for (let i = 0; i < messageDefinition.numFields; i++) {
+      const fieldDefinition = {
+        fieldDefinitionNumber: __privateGet(this, _stream).readByte(),
+        size: __privateGet(this, _stream).readByte(),
+        baseType: __privateGet(this, _stream).readByte() & fit_default.BaseTypeMask
+      };
+      if (!(fieldDefinition.baseType in fit_default.BaseTypeDefinitions)) {
+        __privateMethod(this, _Decoder_instances, throwError_fn2).call(this);
+      }
+      fieldDefinition["invalidValue"] = fit_default.BaseTypeDefinitions[fieldDefinition.baseType].invalid;
+      fieldDefinition["baseTypeSize"] = fit_default.BaseTypeDefinitions[fieldDefinition.baseType].size;
+      messageDefinition.fieldDefinitions.push(fieldDefinition);
+      messageDefinition.messageSize += fieldDefinition.size;
+    }
+    if ((recordHeader & DEV_DATA_MASK) === DEV_DATA_MASK) {
+      const numDevFields = __privateGet(this, _stream).readByte();
+      for (let i = 0; i < numDevFields; i++) {
+        const developerFieldDefinition = {
+          fieldDefinitionNumber: __privateGet(this, _stream).readByte(),
+          size: __privateGet(this, _stream).readByte(),
+          developerDataIndex: __privateGet(this, _stream).readByte()
+        };
+        messageDefinition.developerFieldDefinitions.push(developerFieldDefinition);
+        messageDefinition.developerDataSize += developerFieldDefinition.size;
+      }
+    }
+    (_a = __privateGet(this, _mesgDefinitionListener)) == null ? void 0 : _a.call(this, { ...messageDefinition });
+    let messageProfile = profile_default.messages[messageDefinition.globalMessageNumber];
+    if (messageProfile == null && __privateGet(this, _optIncludeUnknownData)) {
+      messageProfile = {
+        name: messageDefinition["globalMessageNumber"].toString(),
+        messagesKey: messageDefinition["globalMessageNumber"].toString(),
+        num: messageDefinition["globalMessageNumber"],
+        fields: {}
+      };
+    }
+    __privateGet(this, _localMessageDefinitions)[messageDefinition.localMesgNum] = { ...messageDefinition, ...messageProfile };
+    if (messageProfile && !__privateGet(this, _messages2).hasOwnProperty(messageProfile.messagesKey)) {
+      __privateGet(this, _messages2)[messageProfile.messagesKey] = [];
+    }
+  };
+  decodeMessage_fn = function() {
+    var _a;
+    const recordHeader = __privateGet(this, _stream).readByte();
+    const localMesgNum = recordHeader & LOCAL_MESG_NUM_MASK;
+    const messageDefinition = __privateGet(this, _localMessageDefinitions)[localMesgNum];
+    if (messageDefinition == null) {
+      __privateMethod(this, _Decoder_instances, throwError_fn2).call(this);
+    }
+    const fields = messageDefinition.fields ?? {};
+    const mesgNum = messageDefinition.num;
+    const message = {};
+    __privateSet(this, _fieldsWithSubFields, []);
+    __privateSet(this, _fieldsToExpand, []);
+    messageDefinition.fieldDefinitions.forEach((fieldDefinition) => {
+      const field = fields[fieldDefinition.fieldDefinitionNumber];
+      const { fieldName, rawFieldValue } = __privateMethod(this, _Decoder_instances, readFieldValue_fn).call(this, messageDefinition, fieldDefinition, field);
+      if (fieldName != null && (field != null || __privateGet(this, _optIncludeUnknownData))) {
+        message[fieldName] = { rawFieldValue, fieldDefinitionNumber: fieldDefinition.fieldDefinitionNumber };
+        if (field?.subFields?.length > 0) {
+          __privateGet(this, _fieldsWithSubFields).push(fieldName);
+        }
+        if (field?.hasComponents) {
+          __privateGet(this, _fieldsToExpand).push(fieldName);
+        }
+        if (field?.isAccumulated) {
+          __privateMethod(this, _Decoder_instances, setAccumulatedField_fn).call(this, messageDefinition, message, field, rawFieldValue);
+        }
+      }
+    });
+    const developerFields = {};
+    messageDefinition.developerFieldDefinitions.forEach((developerFieldDefinition) => {
+      const field = __privateMethod(this, _Decoder_instances, lookupDeveloperDataField_fn).call(this, developerFieldDefinition);
+      if (field == null) {
+        __privateGet(this, _stream).readBytes(developerFieldDefinition.size);
+        return;
+      }
+      developerFieldDefinition["baseType"] = field.fitBaseTypeId;
+      developerFieldDefinition["invalidValue"] = fit_default.BaseTypeDefinitions[developerFieldDefinition.baseType].invalid;
+      developerFieldDefinition["baseTypeSize"] = fit_default.BaseTypeDefinitions[developerFieldDefinition.baseType].size;
+      const fieldValue = __privateMethod(this, _Decoder_instances, readDeveloperFieldValue_fn).call(this, messageDefinition, developerFieldDefinition, field);
+      if (fieldValue != null) {
+        developerFields[field.key] = fieldValue;
+      }
+    });
+    if (mesgNum === profile_default.MesgNum.DEVELOPER_DATA_ID) {
+      __privateMethod(this, _Decoder_instances, addDeveloperDataIdToProfile_fn).call(this, message);
+    } else if (mesgNum === profile_default.MesgNum.FIELD_DESCRIPTION) {
+      const key = Object.keys(__privateGet(this, _developerDataDefinitions)).reduce((count, key2) => count + __privateGet(this, _developerDataDefinitions)[key2].fields.length, 0);
+      message["key"] = { fieldValue: key, rawFieldValue: key };
+      __privateMethod(this, _Decoder_instances, addFieldDescriptionToProfile_fn).call(this, message);
+    } else {
+      __privateMethod(this, _Decoder_instances, expandSubFields_fn).call(this, mesgNum, message);
+      __privateMethod(this, _Decoder_instances, expandComponents_fn).call(this, mesgNum, message, fields);
+    }
+    __privateMethod(this, _Decoder_instances, transformValues_fn).call(this, message, messageDefinition);
+    if (messageDefinition.name != null) {
+      Object.keys(message).forEach((key) => {
+        message[key] = message[key].fieldValue;
+      });
+      if (Object.keys(developerFields).length > 0) {
+        message.developerFields = developerFields;
+      }
+      __privateGet(this, _messages2)[messageDefinition.messagesKey].push(message);
+      (_a = __privateGet(this, _mesgListener)) == null ? void 0 : _a.call(this, messageDefinition.globalMessageNumber, message);
+      if (mesgNum === profile_default.MesgNum.FIELD_DESCRIPTION && __privateGet(this, _fieldDescriptionListener) != null) {
+        const developerDataIdMesg = __privateGet(this, _messages2).developerDataIdMesgs?.find((developerDataIdMesg2) => {
+          return developerDataIdMesg2.developerDataIndex === message.developerDataIndex;
+        }) ?? {};
+        __privateGet(this, _fieldDescriptionListener).call(this, message.key, { ...developerDataIdMesg }, { ...message });
+      }
+    }
+  };
+  decodeCompressedTimestampDataMessage_fn = function() {
+    __privateMethod(this, _Decoder_instances, throwError_fn2).call(this, "compressed timestamp messages are not currently supported");
+  };
+  readFieldValue_fn = function(messageDefinition, fieldDefinition, field) {
+    const rawFieldValue = __privateMethod(this, _Decoder_instances, readRawFieldValue_fn).call(this, messageDefinition, fieldDefinition, field);
+    if (rawFieldValue == null) {
+      return {};
+    }
+    return {
+      fieldName: field?.name ?? ~~fieldDefinition.fieldDefinitionNumber,
+      rawFieldValue
+    };
+  };
+  readRawFieldValue_fn = function(messageDefinition, fieldDefinition, field) {
+    const rawFieldValue = __privateGet(this, _stream).readValue(
+      fieldDefinition.baseType,
+      fieldDefinition.size,
+      {
+        littleEndian: messageDefinition["endianness"],
+        isArray: field?.array ?? fieldDefinition.size > fieldDefinition.baseTypeSize
+      }
+    );
+    return rawFieldValue;
+  };
+  readDeveloperFieldValue_fn = function(messageDefinition, developerFieldDefinition, field) {
+    __privateGet(this, _stream).legacyArrayMode = true;
+    const rawFieldValue = __privateMethod(this, _Decoder_instances, readRawFieldValue_fn).call(this, messageDefinition, developerFieldDefinition, field);
+    __privateGet(this, _stream).legacyArrayMode = __privateGet(this, _optLegacyArrayMode);
+    return rawFieldValue;
+  };
+  addDeveloperDataIdToProfile_fn = function(message) {
+    if (message == null || message.developerDataIndex.rawFieldValue == null || message.developerDataIndex.rawFieldValue === 255) {
+      return;
+    }
+    __privateGet(this, _developerDataDefinitions)[message.developerDataIndex.rawFieldValue] = {
+      developerDataIndex: message.developerDataIndex?.rawFieldValue,
+      developerId: message.developerId?.rawFieldValue ?? null,
+      applicationId: message.applicationId?.rawFieldValue ?? null,
+      manufacturerId: message.manufacturerId?.rawFieldValue ?? null,
+      applicationVersion: message.applicationVersion?.rawFieldValue ?? null,
+      fields: []
+    };
+  };
+  addFieldDescriptionToProfile_fn = function(message) {
+    if (message == null || message.developerDataIndex.rawFieldValue == null || message.developerDataIndex.rawFieldValue === 255) {
+      return;
+    }
+    if (__privateGet(this, _developerDataDefinitions)[message.developerDataIndex.rawFieldValue] == null) {
+      return;
+    }
+    __privateGet(this, _developerDataDefinitions)[message.developerDataIndex.rawFieldValue].fields.push({
+      developerDataIndex: message.developerDataIndex?.rawFieldValue,
+      fieldDefinitionNumber: message.fieldDefinitionNumber?.rawFieldValue,
+      fitBaseTypeId: message.fitBaseTypeId?.rawFieldValue & fit_default.BaseTypeMask,
+      fieldName: message.fieldName?.rawFieldValue ?? null,
+      array: message.array?.rawFieldValue ?? null,
+      components: message.components?.rawFieldValue ?? null,
+      scale: message.scale?.rawFieldValue ?? null,
+      offset: message.offset?.rawFieldValue ?? null,
+      units: message.units?.rawFieldValue ?? null,
+      bits: message.bits?.rawFieldValue ?? null,
+      accumulate: message.accumulate?.rawFieldValue ?? null,
+      refFieldName: message.refFieldName?.rawFieldValue ?? null,
+      refFieldValue: message.refFieldValue?.rawFieldValue ?? null,
+      fitBaseUnitId: message.fitBaseUnitId?.rawFieldValue ?? null,
+      nativeMesgNum: message.nativeMesgNum?.rawFieldValue ?? null,
+      nativeFieldNum: message.nativeFieldNum?.rawFieldValue ?? null,
+      key: message.key.rawFieldValue
+    });
+  };
+  lookupDeveloperDataField_fn = function(developerFieldDefinition) {
+    try {
+      return __privateGet(this, _developerDataDefinitions)[developerFieldDefinition.developerDataIndex]?.fields?.find((def) => def.fieldDefinitionNumber == developerFieldDefinition.fieldDefinitionNumber) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  expandSubFields_fn = function(mesgNum, message) {
+    if (!__privateGet(this, _optExpandSubFields) || __privateGet(this, _fieldsWithSubFields).length == 0) {
+      return;
+    }
+    __privateGet(this, _fieldsWithSubFields).forEach((name) => {
+      const field = profile_default.messages[mesgNum].fields[message[name].fieldDefinitionNumber];
+      __privateMethod(this, _Decoder_instances, expandSubField_fn).call(this, message, field);
+    });
+  };
+  expandSubField_fn = function(message, field) {
+    for (let i = 0; i < field.subFields.length; i++) {
+      const subField = field.subFields[i];
+      for (let j = 0; j < subField.map.length; j++) {
+        const map = subField.map[j];
+        const referenceField = message[map.name];
+        if (referenceField == null) {
+          continue;
+        }
+        if (referenceField.rawFieldValue === map.value) {
+          const src = message[field.name];
+          const rawFieldValue = Array.isArray(src.rawFieldValue) ? [...src.rawFieldValue] : src.rawFieldValue;
+          message[subField.name] = { ...src, rawFieldValue, isSubField: true };
+          if (subField.hasComponents) {
+            __privateGet(this, _fieldsToExpand).push(subField.name);
+          }
+          break;
+        }
+      }
+    }
+  };
+  expandComponents_fn = function(mesgNum, message, fields) {
+    if (!__privateGet(this, _optExpandComponents) || __privateGet(this, _fieldsToExpand).length == 0) {
+      return;
+    }
+    const mesg = {};
+    while (__privateGet(this, _fieldsToExpand).length > 0) {
+      const name = __privateGet(this, _fieldsToExpand).shift();
+      const { rawFieldValue, fieldDefinitionNumber, isSubField } = message[name] ?? mesg[name];
+      let field = profile_default.messages[mesgNum].fields[fieldDefinitionNumber];
+      field = isSubField ? __privateMethod(this, _Decoder_instances, lookupSubfield_fn).call(this, field, name) : field;
+      const baseType = fit_default.FieldTypeToBaseType[field.type];
+      if (field.hasComponents === false || baseType == null) {
+        continue;
+      }
+      if (utils_internal_default.onlyInvalidValues(rawFieldValue, fit_default.BaseTypeDefinitions[baseType].invalid)) {
+        continue;
+      }
+      const bitStream = new bit_stream_default(rawFieldValue, baseType);
+      for (let j = 0; j < field.components.length; j++) {
+        if (bitStream.bitsAvailable < field.bits[j]) {
+          break;
+        }
+        const targetField = fields[field.components[j]];
+        if (mesg[targetField.name] == null) {
+          const baseType2 = fit_default.FieldTypeToBaseType[targetField.type];
+          const invalidValue = baseType2 != null ? fit_default.BaseTypeDefinitions[baseType2].invalid : 255;
+          mesg[targetField.name] = {
+            fieldValue: [],
+            rawFieldValue: [],
+            fieldDefinitionNumber: targetField.num,
+            isExpandedField: true,
+            isArray: targetField?.array ?? false,
+            invalidValue
+          };
+        }
+        let value = bitStream.readBits(field.bits[j]);
+        if (targetField.isAccumulated) {
+          value = __privateGet(this, _accumulator).accumulate(mesgNum, targetField.num, value, field.bits[j]);
+        }
+        value = value / field.scale[j] - field.offset[j];
+        const rawValue = (value + targetField.offset) * targetField.scale;
+        mesg[targetField.name].rawFieldValue.push(rawValue);
+        if (rawValue === mesg[targetField.name].invalidValue) {
+          mesg[targetField.name].fieldValue.push(null);
+        } else {
+          if (__privateGet(this, _optConvertTypesToStrings)) {
+            value = __privateMethod(this, _Decoder_instances, convertTypeToString_fn).call(this, mesg, targetField, value);
+          }
+          mesg[targetField.name].fieldValue.push(value);
+        }
+        if (targetField.hasComponents) {
+          __privateGet(this, _fieldsToExpand).push(targetField.name);
+        }
+        if (!bitStream.hasBitsAvailable) {
+          break;
+        }
+      }
+    }
+    Object.keys(mesg).forEach((key) => {
+      const field = mesg[key];
+      mesg[key].fieldValue = utils_internal_default.sanitizeValues(field.fieldValue, { legacyArrayMode: __privateGet(this, _optLegacyArrayMode), isArray: field.isArray });
+      mesg[key].rawFieldValue = utils_internal_default.sanitizeValues(field.rawFieldValue, { legacyArrayMode: __privateGet(this, _optLegacyArrayMode), isArray: field.isArray });
+      message[key] = mesg[key];
+    });
+  };
+  transformValues_fn = function(message, messageDefinition) {
+    const fields = messageDefinition?.fields ?? {};
+    for (const name in message) {
+      const { rawFieldValue, fieldDefinitionNumber, isExpandedField, isSubField } = message[name];
+      let field = fields[fieldDefinitionNumber];
+      field = isSubField ? __privateMethod(this, _Decoder_instances, lookupSubfield_fn).call(this, field, name) : field;
+      if (!isExpandedField) {
+        const fieldValue = __privateMethod(this, _Decoder_instances, transformValue_fn).call(this, messageDefinition, field, rawFieldValue);
+        message[name].fieldValue = fieldValue;
+      }
+    }
+  };
+  transformValue_fn = function(messageDefinition, field, rawFieldValue) {
+    let fieldValue = rawFieldValue;
+    if (field == null) {
+      fieldValue = rawFieldValue;
+    } else if (fit_default.NumericFieldTypesSet.has(field?.type ?? -1)) {
+      fieldValue = __privateMethod(this, _Decoder_instances, applyScaleAndOffset_fn).call(this, messageDefinition, field, rawFieldValue);
+    } else if (field.type === "string") {
+      fieldValue = rawFieldValue;
+    } else if (field.type === "dateTime" && __privateGet(this, _optConvertDateTimesToDates)) {
+      fieldValue = utils_default.convertDateTimeToDate(rawFieldValue);
+    } else if (__privateGet(this, _optConvertTypesToStrings)) {
+      fieldValue = __privateMethod(this, _Decoder_instances, convertTypeToString_fn).call(this, messageDefinition, field, rawFieldValue);
+    } else {
+      fieldValue = rawFieldValue;
+    }
+    return fieldValue;
+  };
+  applyScaleAndOffset_fn = function(messageDefinition, field, rawFieldValue) {
+    if (!__privateGet(this, _optApplyScaleAndOffset)) {
+      return rawFieldValue;
+    }
+    if (fit_default.NumericFieldTypesSet.has(field?.type ?? -1) === false) {
+      return rawFieldValue;
+    }
+    if ([profile_default.MesgNum.DEVELOPER_DATA_ID, profile_default.MesgNum.FIELD_DESCRIPTION].includes(messageDefinition.globalMessageNumber)) {
+      return rawFieldValue;
+    }
+    if (rawFieldValue == null) {
+      return rawFieldValue;
+    }
+    if (Array.isArray(field?.scale ?? 1) && field.scale.length > 1) {
+      return rawFieldValue;
+    }
+    const scale = Array.isArray(field?.scale ?? fit_default.FIELD_DEFAULT_SCALE) ? field?.scale[0] : field?.scale ?? fit_default.FIELD_DEFAULT_SCALE;
+    const offset = Array.isArray(field?.offset ?? fit_default.FIELD_DEFAULT_OFFSET) ? field?.offset[0] : field?.offset ?? fit_default.FIELD_DEFAULT_OFFSET;
+    try {
+      if (Array.isArray(rawFieldValue)) {
+        return rawFieldValue.map((value) => {
+          return value == null ? value : value / scale - offset;
+        });
+      }
+      return rawFieldValue / scale - offset;
+    } catch {
+      return rawFieldValue;
+    }
+  };
+  setAccumulatedField_fn = function(messageDefinition, message, field, rawFieldValue) {
+    const rawFieldValues = Array.isArray(rawFieldValue) ? rawFieldValue : [rawFieldValue];
+    rawFieldValues.forEach((value) => {
+      Object.values(message).forEach((containingField) => {
+        let components = messageDefinition.fields[containingField.fieldDefinitionNumber].components ?? [];
+        components.forEach((componentFieldNum, i) => {
+          const targetField = messageDefinition.fields[componentFieldNum];
+          if (targetField?.num == field.num && targetField?.isAccumulated) {
+            value = (value / field.scale - field.offset + containingField.offset[i]) * containingField.scale[i];
+          }
+        });
+      });
+      __privateGet(this, _accumulator).createAccumulatedField(messageDefinition.num, field.num, value);
+    });
+  };
+  convertTypeToString_fn = function(messageDefinition, field, rawFieldValue) {
+    if ([profile_default.MesgNum.DEVELOPER_DATA_ID, profile_default.MesgNum.FIELD_DESCRIPTION].includes(messageDefinition.globalMessageNumber)) {
+      return rawFieldValue;
+    }
+    if (fit_default.NumericFieldTypesSet.has(field?.type ?? -1)) {
+      return rawFieldValue;
+    }
+    try {
+      const type = profile_default.types[field?.type ?? -1];
+      if (Array.isArray(rawFieldValue)) {
+        return rawFieldValue.map((value) => {
+          return value == null ? value : type?.[value] ?? value;
+        });
+      }
+      return type?.[rawFieldValue] ?? rawFieldValue;
+    } catch {
+      return rawFieldValue;
+    }
+  };
+  lookupSubfield_fn = function(field, name) {
+    const subField = field.subFields.find((subField2) => subField2.name === name);
+    return subField != null ? subField : {};
+  };
+  _Decoder_static = new WeakSet();
+  readFileHeader_fn = function(stream, { resetPosition = false, decodeMode = DecodeMode.NORMAL }) {
+    const position = stream.position;
+    if (decodeMode !== DecodeMode.NORMAL) {
+      if (decodeMode === DecodeMode.SKIP_HEADER) {
+        stream.seek(HEADER_WITH_CRC_SIZE);
+      }
+      const headerSize = decodeMode === DecodeMode.SKIP_HEADER ? HEADER_WITH_CRC_SIZE : 0;
+      const dataSize = stream.length - headerSize - CRC_SIZE;
+      return {
+        headerSize,
+        dataSize
+      };
+    }
+    const fileHeader = {
+      headerSize: stream.readByte(),
+      protocolVersion: stream.readByte(),
+      profileVersion: __privateGet(this, _expandProfileVersion).call(this, stream.readUInt16()),
+      dataSize: stream.readUInt32(),
+      dataType: stream.readString(4),
+      headerCRC: null
+    };
+    if (fileHeader.headerSize === 14) {
+      fileHeader.headerCRC = stream.readUInt16();
+    }
+    if (resetPosition) {
+      stream.seek(position);
+    }
+    return fileHeader;
+  };
+  throwError_fn2 = function(error = "") {
+    throw Error(`FIT Runtime Error at byte ${__privateGet(this, _stream).position} ${error}`.trimEnd());
+  };
+  _expandProfileVersion = new WeakMap();
+  __privateAdd(_Decoder, _Decoder_static);
+  __privateAdd(_Decoder, _expandProfileVersion, (profileVersion) => {
+    const scale = profileVersion > PROFILE_VERSION_SCALE_CHANGE_VALUE ? 1e3 : 100;
+    return {
+      major: Math.floor(profileVersion / scale),
+      minor: profileVersion % scale
+    };
+  });
+  var Decoder = _Decoder;
+  var decoder_default = Decoder;
+
+  // node_modules/@garmin/fitsdk/src/mesg-definition.js
+  var textEncoder = new TextEncoder();
+  var _MesgDefinition_instances, fieldSize_fn, fieldDescriptionForKey_fn;
+  var MesgDefinition = class {
+    constructor(mesgNum, mesg, { fieldDescriptions = null } = {}) {
+      __privateAdd(this, _MesgDefinition_instances);
+      __publicField(this, "globalMessageNumber");
+      __publicField(this, "localMesgNum");
+      __publicField(this, "fieldDefinitions", []);
+      __publicField(this, "developerFieldDefinitions", []);
+      try {
+        if (mesg == null) {
+          throw new Error("mesg is missing or null");
+        }
+        if (mesgNum == null) {
+          throw new Error("mesgNum is missing or null");
+        }
+        const mesgProfile = profile_default.messages[mesgNum];
+        if (mesgProfile == null) {
+          throw new Error(`mesgNum: ${mesgNum} could not be found in the Profile`);
+        }
+        this.globalMessageNumber = mesgNum;
+        this.localMesgNum = 0;
+        Object.keys(mesg).forEach((fieldName) => {
+          if (mesg[fieldName] == null) {
+            return;
+          }
+          const fieldProfile = Object.entries(mesgProfile.fields).find(([, fieldProfile2]) => {
+            return fieldProfile2.name === fieldName;
+          });
+          if (fieldProfile == null) {
+            return;
+          }
+          const baseType = fit_default.FieldTypeToBaseType[fieldProfile[1].baseType];
+          const baseTypeDef = fit_default.BaseTypeDefinitions[baseType];
+          let scale = fieldProfile[1].components.length > 1 ? fit_default.FIELD_DEFAULT_SCALE : fieldProfile[1].scale;
+          let offset = fieldProfile[1].components.length > 1 ? fit_default.FIELD_DEFAULT_OFFSET : fieldProfile[1].offset;
+          scale = Array.isArray(scale) ? scale[0] : scale ?? fit_default.FIELD_DEFAULT_SCALE;
+          offset = Array.isArray(offset) ? offset[0] : offset ?? fit_default.FIELD_DEFAULT_OFFSET;
+          this.fieldDefinitions.push({
+            name: fieldName,
+            num: fieldProfile[1].num,
+            size: __privateMethod(this, _MesgDefinition_instances, fieldSize_fn).call(this, mesg[fieldName], baseTypeDef),
+            baseType,
+            baseTypeEndianFlag: baseTypeDef.baseTypeEndianFlag,
+            type: fieldProfile[1].type,
+            scale,
+            offset,
+            components: fieldProfile[1].components
+          });
+        });
+        Object.keys(mesg.developerFields ?? {})?.sort()?.forEach((key) => {
+          const { developerDataIdMesg, fieldDescriptionMesg } = __privateMethod(this, _MesgDefinition_instances, fieldDescriptionForKey_fn).call(this, fieldDescriptions, key);
+          const baseTypeDef = fit_default.BaseTypeDefinitions[fieldDescriptionMesg.fitBaseTypeId & fit_default.BaseTypeMask];
+          this.developerFieldDefinitions.push({
+            key,
+            baseType: fieldDescriptionMesg.fitBaseTypeId & fit_default.BaseTypeMask,
+            fieldDefinitionNumber: fieldDescriptionMesg.fieldDefinitionNumber,
+            size: __privateMethod(this, _MesgDefinition_instances, fieldSize_fn).call(this, mesg.developerFields[key], baseTypeDef),
+            developerDataIndex: developerDataIdMesg.developerDataIndex,
+            type: fit_default.BaseTypeToFieldType[baseTypeDef.type],
+            scale: 1,
+            offset: 0,
+            components: []
+          });
+        });
+        if (this.fieldDefinitions.length === 0) {
+          throw new Error("No valid fields were found in the message");
+        }
+        if (this.fieldDefinitions.some((fieldDefinition) => {
+          return fieldDefinition.size > fit_default.MAX_FIELD_SIZE;
+        })) {
+          throw new Error(`Some field sizes are greater than ${fit_default.MAX_FIELD_SIZE}`, { cause: this.fieldDefinitions });
+        }
+        this.developerFieldDefinitions.forEach((developerFieldDefinition) => {
+          if (developerFieldDefinition.size > fit_default.MAX_FIELD_SIZE) {
+            throw new Error(`Developer field size for key '${developerFieldDefinition.key}' is greater than ${fit_default.MAX_FIELD_SIZE}`, { cause: developerFieldDefinition });
+          }
+        });
+      } catch (error) {
+        throw new Error(
+          "Could not construct MesgDefinition from Message",
+          {
+            cause: {
+              cause: {
+                message: error.message,
+                cause: error.cause
+              }
+            }
+          }
+        );
+      }
+    }
+    write(outputStream) {
+      let headerByte = fit_default.MESG_DEFINITION_MASK | this.localMesgNum & fit_default.LOCAL_MESG_NUM_MASK;
+      if (this.developerFieldDefinitions.length > 0) {
+        headerByte |= fit_default.DEV_DATA_MASK;
+      }
+      outputStream.writeUInt8(headerByte);
+      outputStream.writeUInt8(0);
+      outputStream.writeUInt8(fit_default.ARCH_LITTLE_ENDIAN);
+      outputStream.writeUInt16(this.globalMessageNumber);
+      outputStream.writeUInt8(this.fieldDefinitions.length);
+      this.fieldDefinitions.forEach((fieldDefinition) => {
+        outputStream.writeUInt8(fieldDefinition.num);
+        outputStream.writeUInt8(fieldDefinition.size);
+        outputStream.writeUInt8(fieldDefinition.baseType | fieldDefinition.baseTypeEndianFlag);
+      });
+      if (this.developerFieldDefinitions.length > 0) {
+        outputStream.writeUInt8(this.developerFieldDefinitions.length);
+        this.developerFieldDefinitions.forEach((developerFieldDefinition) => {
+          outputStream.writeUInt8(developerFieldDefinition.fieldDefinitionNumber);
+          outputStream.writeUInt8(developerFieldDefinition.size);
+          outputStream.writeUInt8(developerFieldDefinition.developerDataIndex);
+        });
+      }
+    }
+    equals(other) {
+      if (this.globalMessageNumber !== other.globalMessageNumber || this.fieldDefinitions.length !== other.fieldDefinitions.length || this.developerFieldDefinitions.length !== other.developerFieldDefinitions.length) {
+        return false;
+      }
+      for (let i = 0; i < this.fieldDefinitions.length; i++) {
+        const lhs = this.fieldDefinitions[i];
+        if (null == other.fieldDefinitions.find((rhs) => {
+          return lhs.num === rhs.num && lhs.size === rhs.size && lhs.baseType === rhs.baseType;
+        })) {
+          return false;
+        }
+      }
+      for (let i = 0; i < this.developerFieldDefinitions.length; i++) {
+        const lhs = this.developerFieldDefinitions[i];
+        if (null == other.developerFieldDefinitions.find((rhs) => {
+          return lhs.fieldDefinitionNumber === rhs.fieldDefinitionNumber && lhs.size === rhs.size && lhs.developerDataIndex === rhs.developerDataIndex;
+        })) {
+          return false;
+        }
+      }
+      return true;
+    }
+  };
+  _MesgDefinition_instances = new WeakSet();
+  fieldSize_fn = function(value, baseTypeDef) {
+    const values = Array.isArray(value) ? value : [value];
+    if (baseTypeDef.type === fit_default.BaseType.STRING) {
+      const size = values.reduce(
+        (accumulator, currentValue) => {
+          return accumulator + textEncoder.encode(currentValue).length + 1;
+        },
+        0
+      );
+      return size;
+    }
+    return baseTypeDef.size * values.length;
+  };
+  /**
+   * Look up the field description for the key, and validate the required fields.
+   */
+  fieldDescriptionForKey_fn = function(fieldDescriptions, key) {
+    try {
+      if (fieldDescriptions == null) {
+        throw new Error("no developer data field descriptions provided", {
+          cause: {
+            fieldDescriptions
+          }
+        });
+      }
+      const { developerDataIdMesg, fieldDescriptionMesg } = fieldDescriptions?.[key] ?? {};
+      if (developerDataIdMesg == null || fieldDescriptionMesg == null) {
+        throw new Error(`could not find a developer field description for key ${key}`);
+      }
+      const errors = [];
+      if (fieldDescriptionMesg.fitBaseTypeId == null) {
+        errors.push(`fieldDescriptionMesg fitBaseTypeId is ${fieldDescriptionMesg.fitBaseTypeId}`);
+      }
+      if (fieldDescriptionMesg.fieldDefinitionNumber == null) {
+        errors.push(`fieldDescriptionMesg fieldDefinitionNumber is ${fieldDescriptionMesg.fieldDefinitionNumber}`);
+      }
+      if (fieldDescriptionMesg.developerDataIndex == null) {
+        errors.push(`fieldDescriptionMesg developerDataIndex is ${fieldDescriptionMesg.developerDataIndex}`);
+      }
+      if (developerDataIdMesg.developerDataIndex == null) {
+        errors.push(`developerDataIdMesg developerDataIndex is ${developerDataIdMesg.developerDataIndex}`);
+      }
+      if (developerDataIdMesg.developerDataIndex !== fieldDescriptionMesg.developerDataIndex) {
+        errors.push(
+          `developerDataIndex values do not match in fieldDescription ${developerDataIdMesg.developerDataIndex} != ${fieldDescriptionMesg.developerDataIndex}`
+        );
+      }
+      if (errors.length > 0) {
+        throw new Error("missing or invalid values in the fieldDescription,", {
+          cause: {
+            developerDataIdMesg,
+            fieldDescriptionMesg,
+            cause: errors
+          }
+        });
+      }
+      return { key, developerDataIdMesg, fieldDescriptionMesg };
+    } catch (error) {
+      throw new Error(
+        `invalid field description for key ${key}`,
+        {
+          cause: {
+            key,
+            cause: {
+              message: error.message,
+              cause: error.cause
+            }
+          }
+        }
+      );
+    }
+  };
+  var mesg_definition_default = MesgDefinition;
+
+  // node_modules/@garmin/fitsdk/src/output-stream.js
+  var ONE_MEGABYTE = 1048576;
+  var FIVE_HUNDRED_MEGABYTES = ONE_MEGABYTE * 500;
+  var HALF_MEGABYTE = ONE_MEGABYTE / 2;
+  var MAX_BYTE_LENGTH = FIVE_HUNDRED_MEGABYTES;
+  var _arrayBuffer2, _dataView2, _byteOffset, _resizeByBytes, _baseTypeDefinitions, _textEncoder, _OutputStream_instances, setValues_fn, setValue_fn, resizeIfNeeded_fn;
+  var OutputStream = class {
+    /**
+     * Creates an OutputStream
+     * @constructor
+     * @param {Object=} [options] - Read options (optional)
+     * @param {Number} [options.initialByteLength=0.5MB] - (optional, default 0.5 MB)
+     * @param {Number} [options.maxByteLength=500MB] - (optional, default 500 MB)
+     * @param {Number} [options.resizeByBytes=0.5MB] - (optional, default 0.5 MB)
+     */
+    constructor({
+      initialByteLength = HALF_MEGABYTE,
+      maxByteLength = MAX_BYTE_LENGTH,
+      resizeByBytes = HALF_MEGABYTE
+    } = {}) {
+      __privateAdd(this, _OutputStream_instances);
+      __privateAdd(this, _arrayBuffer2, null);
+      __privateAdd(this, _dataView2, null);
+      __privateAdd(this, _byteOffset, 0);
+      __privateAdd(this, _resizeByBytes, 0);
+      __privateAdd(this, _baseTypeDefinitions, null);
+      __privateAdd(this, _textEncoder, new TextEncoder());
+      __privateSet(this, _arrayBuffer2, new ArrayBuffer(initialByteLength, { maxByteLength }));
+      __privateSet(this, _dataView2, new DataView(__privateGet(this, _arrayBuffer2)));
+      __privateSet(this, _resizeByBytes, resizeByBytes);
+      __privateSet(this, _baseTypeDefinitions, {
+        [fit_default.BaseType.ENUM]: { setValue: __privateGet(this, _dataView2).setUint8.bind(__privateGet(this, _dataView2)), size: 1, mask: 255 },
+        [fit_default.BaseType.UINT8]: { setValue: __privateGet(this, _dataView2).setUint8.bind(__privateGet(this, _dataView2)), size: 1, mask: 255 },
+        [fit_default.BaseType.UINT16]: { setValue: __privateGet(this, _dataView2).setUint16.bind(__privateGet(this, _dataView2)), size: 2, mask: 65535 },
+        [fit_default.BaseType.UINT32]: { setValue: __privateGet(this, _dataView2).setUint32.bind(__privateGet(this, _dataView2)), size: 4, mask: 4294967295 },
+        [fit_default.BaseType.UINT64]: { setValue: __privateGet(this, _dataView2).setBigUint64.bind(__privateGet(this, _dataView2)), size: 8, mask: 0xFFFFFFFFFFFFFFFFn },
+        [fit_default.BaseType.SINT8]: { setValue: __privateGet(this, _dataView2).setInt8.bind(__privateGet(this, _dataView2)), size: 1, mask: 255 },
+        [fit_default.BaseType.SINT16]: { setValue: __privateGet(this, _dataView2).setInt16.bind(__privateGet(this, _dataView2)), size: 2, mask: 65535 },
+        [fit_default.BaseType.SINT32]: { setValue: __privateGet(this, _dataView2).setInt32.bind(__privateGet(this, _dataView2)), size: 4, mask: 4294967295 },
+        [fit_default.BaseType.SINT64]: { setValue: __privateGet(this, _dataView2).setBigInt64.bind(__privateGet(this, _dataView2)), size: 8, mask: 0xFFFFFFFFFFFFFFFFn },
+        [fit_default.BaseType.FLOAT32]: { setValue: __privateGet(this, _dataView2).setFloat32.bind(__privateGet(this, _dataView2)), size: 4 },
+        [fit_default.BaseType.FLOAT64]: { setValue: __privateGet(this, _dataView2).setFloat64.bind(__privateGet(this, _dataView2)), size: 8 },
+        [fit_default.BaseType.UINT8Z]: { setValue: __privateGet(this, _dataView2).setUint8.bind(__privateGet(this, _dataView2)), size: 1, mask: 255 },
+        [fit_default.BaseType.UINT16Z]: { setValue: __privateGet(this, _dataView2).setUint16.bind(__privateGet(this, _dataView2)), size: 2, mask: 65535 },
+        [fit_default.BaseType.UINT32Z]: { setValue: __privateGet(this, _dataView2).setUint32.bind(__privateGet(this, _dataView2)), size: 4, mask: 4294967295 },
+        [fit_default.BaseType.UINT64Z]: { setValue: __privateGet(this, _dataView2).setBigUint64.bind(__privateGet(this, _dataView2)), size: 8, mask: 0xFFFFFFFFFFFFFFFFn },
+        [fit_default.BaseType.BYTE]: { setValue: __privateGet(this, _dataView2).setUint8.bind(__privateGet(this, _dataView2)), size: 1, mask: 255 }
+      });
+    }
+    get length() {
+      return __privateGet(this, _byteOffset);
+    }
+    get uint8Array() {
+      return new Uint8Array(__privateGet(this, _arrayBuffer2).slice(0, __privateGet(this, _byteOffset)));
+    }
+    writeUInt8(value) {
+      return this.write(value, fit_default.BaseType.UINT8);
+    }
+    writeUInt16(value) {
+      return this.write(value, fit_default.BaseType.UINT16);
+    }
+    writeUInt32(value) {
+      return this.write(value, fit_default.BaseType.UINT32);
+    }
+    writeUInt64(value) {
+      return this.write(value, fit_default.BaseType.UINT64);
+    }
+    writeSInt8(value) {
+      return this.write(value, fit_default.BaseType.SINT8);
+    }
+    writeSInt16(value) {
+      return this.write(value, fit_default.BaseType.SINT16);
+    }
+    writeSInt32(value) {
+      return this.write(value, fit_default.BaseType.SINT32);
+    }
+    writeSInt64(value) {
+      return this.write(value, fit_default.BaseType.SINT64);
+    }
+    writeFloat32(value) {
+      return this.write(value, fit_default.BaseType.FLOAT32);
+    }
+    writeFloat64(value) {
+      return this.write(value, fit_default.BaseType.FLOAT64);
+    }
+    writeUInt8z(value) {
+      return this.write(value, fit_default.BaseType.UINT8Z);
+    }
+    writeUInt16z(value) {
+      return this.write(value, fit_default.BaseType.UINT16Z);
+    }
+    writeUInt32z(value) {
+      return this.write(value, fit_default.BaseType.UINT32Z);
+    }
+    writeUInt64z(value) {
+      return this.write(value, fit_default.BaseType.UINT64Z);
+    }
+    writeByte(value) {
+      return this.write(value, fit_default.BaseType.BYTE);
+    }
+    writeString(text) {
+      text = Array.isArray(text) ? text.join(fit_default.NULL_TERMINATOR) : text;
+      const bytes = __privateGet(this, _textEncoder).encode(text);
+      __privateMethod(this, _OutputStream_instances, resizeIfNeeded_fn).call(this, bytes.byteLength);
+      const uint8Array = new Uint8Array(__privateGet(this, _arrayBuffer2), __privateGet(this, _byteOffset), bytes.byteLength);
+      uint8Array.set(bytes);
+      __privateSet(this, _byteOffset, __privateGet(this, _byteOffset) + bytes.byteLength);
+      this.writeUInt8(fit_default.NULL_TERMINATOR);
+      return this;
+    }
+    write(value, baseType) {
+      if (baseType === fit_default.BaseType.STRING) {
+        return this.writeString(value);
+      }
+      __privateMethod(this, _OutputStream_instances, setValues_fn).call(this, baseType, value);
+      return;
+    }
+    set(typedarray, targetOffset = 0) {
+      __privateMethod(this, _OutputStream_instances, resizeIfNeeded_fn).call(this, typedarray.byteLength + targetOffset);
+      const uint8Array = new Uint8Array(__privateGet(this, _arrayBuffer2));
+      uint8Array.set(typedarray, targetOffset);
+      __privateSet(this, _byteOffset, Math.max(__privateGet(this, _byteOffset), typedarray.byteLength + targetOffset));
+      return this;
+    }
+    [Symbol.iterator]() {
+      let start = 0;
+      const end = __privateGet(this, _byteOffset);
+      const dataView = __privateGet(this, _dataView2);
+      return {
+        next() {
+          if (start < end) {
+            return { value: dataView.getUint8(start++), done: false };
+          } else {
+            return { done: true };
+          }
+        }
+      };
+    }
+  };
+  _arrayBuffer2 = new WeakMap();
+  _dataView2 = new WeakMap();
+  _byteOffset = new WeakMap();
+  _resizeByBytes = new WeakMap();
+  _baseTypeDefinitions = new WeakMap();
+  _textEncoder = new WeakMap();
+  _OutputStream_instances = new WeakSet();
+  setValues_fn = function(baseType, value) {
+    const values = Array.isArray(value) ? value : [value];
+    values.forEach((value2) => {
+      return __privateMethod(this, _OutputStream_instances, setValue_fn).call(this, baseType, value2);
+    });
+  };
+  setValue_fn = function(baseType, value) {
+    const def = __privateGet(this, _baseTypeDefinitions)[baseType];
+    __privateMethod(this, _OutputStream_instances, resizeIfNeeded_fn).call(this, def.size);
+    const val = def.mask == null ? value : value & def.mask;
+    def.setValue(__privateGet(this, _byteOffset), val, true);
+    __privateSet(this, _byteOffset, __privateGet(this, _byteOffset) + def.size);
+    return this;
+  };
+  resizeIfNeeded_fn = function(byteCount = 1) {
+    if (__privateGet(this, _arrayBuffer2).byteLength - __privateGet(this, _byteOffset) >= byteCount) {
+      return;
+    }
+    const newByteLength = __privateGet(this, _arrayBuffer2).byteLength + Math.max(__privateGet(this, _resizeByBytes), byteCount);
+    if (newByteLength > __privateGet(this, _arrayBuffer2).maxByteLength) {
+      throw new Error("Can not resize OutputStream. Set a larger initial size.");
+    }
+    __privateGet(this, _arrayBuffer2).resize(newByteLength);
+  };
+  var output_stream_default = OutputStream;
+
+  // node_modules/@garmin/fitsdk/src/encoder.js
+  var HEADER_WITH_CRC_SIZE2 = 14;
+  var HEADER_WITHOUT_CRC_SIZE2 = 12;
+  var _Encoder_instances, writeEmptyFileHeader_fn, updateFileHeader_fn, writeFileCrc_fn, transformValues_fn2, transformValue_fn2, _isValidType, unapplyScaleAndOffset_fn, _createMesgDefinition, _lookupLocalMesgNum, _writeMesgDefinitionIfNotActive, writeMesgDefinition_fn, _localMesgDefinitions, _nextLocalMesgNum, _outputStream, _fieldDescriptions;
+  var Encoder = class {
+    constructor({ fieldDescriptions = null } = {}) {
+      __privateAdd(this, _Encoder_instances);
+      __privateAdd(this, _isValidType, (value, type) => {
+        const jsType = fit_default.FieldTypeToJsType[type];
+        return typeof value === jsType;
+      });
+      /**
+       * Creates a MesgDefinition from the mesgNum and mesg.
+       * @param {Number} mesgNum - The mesg number for this message
+       * @param {Object} [mesg] - The message data
+       * @return {MesgDefinition}
+       */
+      __privateAdd(this, _createMesgDefinition, (mesgNum, mesg) => {
+        const mesgDefinition = new mesg_definition_default(mesgNum, mesg, { fieldDescriptions: __privateGet(this, _fieldDescriptions) });
+        mesgDefinition.localMesgNum = __privateGet(this, _lookupLocalMesgNum).call(this, mesgDefinition);
+        return mesgDefinition;
+      });
+      /**
+       * Searches the #localMesgDefinitions for a matching mesgDefinition
+       * @param {Object} mesgDefinition - the mesg definition to match
+       * @return The localMesgNum to be used with mesgDefinition
+       */
+      __privateAdd(this, _lookupLocalMesgNum, (mesgDefinition) => {
+        const localMesgNum = __privateGet(this, _localMesgDefinitions).findIndex((localMesgDefinition) => {
+          return localMesgDefinition?.equals(mesgDefinition) ?? false;
+        });
+        return (localMesgNum !== -1 ? localMesgNum : __privateWrapper(this, _nextLocalMesgNum)._++) & fit_default.LOCAL_MESG_NUM_MASK;
+      });
+      /**
+       * Writes the mesgDefinition to the output stream, if it is not one of the currently active 16
+       * @param {Object} mesgDefinition - the mesg definition to match
+       * @return The localMesgNum to be used with mesgDefinition
+       */
+      __privateAdd(this, _writeMesgDefinitionIfNotActive, (mesgDefinition) => {
+        const localMesgNum = mesgDefinition.localMesgNum;
+        if (__privateGet(this, _localMesgDefinitions)[localMesgNum] == null || !__privateGet(this, _localMesgDefinitions)[localMesgNum].equals(mesgDefinition)) {
+          __privateMethod(this, _Encoder_instances, writeMesgDefinition_fn).call(this, mesgDefinition);
+        }
+        return localMesgNum;
+      });
+      __privateAdd(this, _localMesgDefinitions, Array(16).fill(null));
+      __privateAdd(this, _nextLocalMesgNum, 0);
+      __privateAdd(this, _outputStream, new output_stream_default());
+      __privateAdd(this, _fieldDescriptions, null);
+      __privateSet(this, _fieldDescriptions, {});
+      for (const [key, { developerDataIdMesg, fieldDescriptionMesg }] of Object.entries(fieldDescriptions ?? {})) {
+        this.addDeveloperField(key, developerDataIdMesg, fieldDescriptionMesg);
+      }
+      __privateMethod(this, _Encoder_instances, writeEmptyFileHeader_fn).call(this);
+    }
+    close() {
+      __privateMethod(this, _Encoder_instances, updateFileHeader_fn).call(this);
+      __privateMethod(this, _Encoder_instances, writeFileCrc_fn).call(this);
+      return __privateGet(this, _outputStream).uint8Array;
+    }
+    writeMesg(mesg) {
+      return this.onMesg(mesg.mesgNum, mesg);
+    }
+    onMesg(mesgNum, mesg) {
+      try {
+        const mesgDefinition = __privateGet(this, _createMesgDefinition).call(this, mesgNum, mesg);
+        __privateGet(this, _writeMesgDefinitionIfNotActive).call(this, mesgDefinition);
+        __privateGet(this, _outputStream).writeUInt8(mesgDefinition.localMesgNum);
+        mesgDefinition.fieldDefinitions.forEach((fieldDefinition) => {
+          const values = __privateMethod(this, _Encoder_instances, transformValues_fn2).call(this, mesg[fieldDefinition.name], fieldDefinition);
+          const baseTypeDef = fit_default.BaseTypeDefinitions[fieldDefinition.baseType];
+          __privateGet(this, _outputStream).write(values, baseTypeDef.type);
+        });
+        mesgDefinition.developerFieldDefinitions.forEach((developerFieldDefinition) => {
+          const values = __privateMethod(this, _Encoder_instances, transformValues_fn2).call(this, mesg.developerFields[developerFieldDefinition.key], developerFieldDefinition);
+          const baseTypeDef = fit_default.BaseTypeDefinitions[developerFieldDefinition.baseType];
+          __privateGet(this, _outputStream).write(values, baseTypeDef.type);
+        });
+      } catch (error) {
+        throw new Error(
+          "Could not write Message",
+          {
+            cause: {
+              mesg,
+              cause: {
+                message: error.message,
+                cause: error.cause
+              }
+            }
+          }
+        );
+      }
+      return this;
+    }
+    addDeveloperField(key, developerDataIdMesg, fieldDescriptionMesg) {
+      if (developerDataIdMesg.developerDataIndex == null || fieldDescriptionMesg.developerDataIndex == null) {
+        throw new Error("addDeveloperField() - one or more developerDataIndex values are null.", {
+          cause: {
+            key,
+            developerDataIdMesg,
+            fieldDescriptionMesg
+          }
+        });
+      }
+      if (developerDataIdMesg.developerDataIndex !== fieldDescriptionMesg.developerDataIndex) {
+        throw new Error("addDeveloperField() - developerDataIndex values do not match.", {
+          cause: {
+            key,
+            developerDataIdMesg,
+            fieldDescriptionMesg
+          }
+        });
+      }
+      __privateGet(this, _fieldDescriptions)[key] = {
+        developerDataIdMesg,
+        fieldDescriptionMesg
+      };
+      return this;
+    }
+  };
+  _Encoder_instances = new WeakSet();
+  writeEmptyFileHeader_fn = function() {
+    Array(HEADER_WITH_CRC_SIZE2).fill(0).forEach((zero) => {
+      __privateGet(this, _outputStream).writeUInt8(zero);
+    });
+  };
+  updateFileHeader_fn = function() {
+    const arrayBuffer = new ArrayBuffer(HEADER_WITH_CRC_SIZE2);
+    const dataView = new DataView(arrayBuffer);
+    dataView.setUint8(0, HEADER_WITH_CRC_SIZE2);
+    dataView.setUint8(1, 2);
+    dataView.setUint16(2, profile_default.version.major * 1e3 + profile_default.version.minor, true);
+    dataView.setUint32(4, __privateGet(this, _outputStream).length - HEADER_WITH_CRC_SIZE2, true);
+    dataView.setUint8(8, 46);
+    dataView.setUint8(9, 70);
+    dataView.setUint8(10, 73);
+    dataView.setUint8(11, 84);
+    const crc = crc_calculator_default.calculateCRC(new Uint8Array(arrayBuffer), 0, HEADER_WITHOUT_CRC_SIZE2);
+    dataView.setUint16(12, crc, true);
+    __privateGet(this, _outputStream).set(new Uint8Array(arrayBuffer));
+  };
+  writeFileCrc_fn = function() {
+    const crc = crc_calculator_default.calculateCRC(__privateGet(this, _outputStream).uint8Array, 0, __privateGet(this, _outputStream).length);
+    __privateGet(this, _outputStream).writeUInt16(crc);
+  };
+  transformValues_fn2 = function(value, fieldDefinition) {
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((value2) => {
+      return __privateMethod(this, _Encoder_instances, transformValue_fn2).call(this, value2, fieldDefinition);
+    });
+  };
+  transformValue_fn2 = function(value, fieldDefinition) {
+    try {
+      if (fit_default.isNotNumberStringDateOrBoolean(value)) {
+        return fit_default.BaseTypeDefinitions[fieldDefinition.baseType].invalid;
+      }
+      if (fit_default.NumericFieldTypes.includes(fieldDefinition.type)) {
+        if (!fit_default.isNumeric(value)) {
+          throw new Error();
+        }
+        if (fit_default.isString(value)) {
+          value = fit_default.BigIntFieldTypes.includes(fieldDefinition.type) ? BigInt(value) : Number(value);
+        }
+        const hasScaleOrOffset = fieldDefinition.scale != fit_default.FIELD_DEFAULT_SCALE || fieldDefinition.offset != fit_default.FIELD_DEFAULT_OFFSET;
+        if (!hasScaleOrOffset && !__privateGet(this, _isValidType).call(this, value, fieldDefinition.type)) {
+          throw new Error();
+        }
+        if (hasScaleOrOffset) {
+          const scaledValue = __privateMethod(this, _Encoder_instances, unapplyScaleAndOffset_fn).call(this, value, fieldDefinition.scale, fieldDefinition.offset);
+          const roundedValue = fit_default.FloatingPointFieldTypes.includes(fieldDefinition.type) || fit_default.isBigInt(scaledValue) ? scaledValue : Math.round(scaledValue);
+          return fit_default.BigIntFieldTypes.includes(fieldDefinition.type) ? BigInt(roundedValue) : Number(roundedValue);
+        }
+        return value;
+      }
+      if (fieldDefinition.type === "dateTime") {
+        if (fit_default.isDate(value)) {
+          return utils_default.convertDateToDateTime(value);
+        }
+        if (!fit_default.isNumeric(value)) {
+          throw new Error();
+        }
+        return value;
+      }
+      if (fieldDefinition.type === "string") {
+        if (!fit_default.isString(value)) {
+          throw new Error();
+        }
+        return value;
+      }
+      if (fit_default.isNumeric(value)) {
+        return value;
+      }
+      const profileType = profile_default.types[fieldDefinition.type];
+      const [typeValue] = Object.entries(profileType).find(([, typeValue2]) => {
+        return typeValue2 === value;
+      });
+      return typeValue;
+    } catch {
+      throw new Error(
+        `Could not convert "${value}" to "${fieldDefinition.type}"`,
+        { cause: { value, fieldDefinition } }
+      );
+    }
+  };
+  _isValidType = new WeakMap();
+  unapplyScaleAndOffset_fn = function(value, scale, offset) {
+    return fit_default.isBigInt(value) ? (value + BigInt(offset)) * BigInt(scale) : (value + offset) * scale;
+  };
+  _createMesgDefinition = new WeakMap();
+  _lookupLocalMesgNum = new WeakMap();
+  _writeMesgDefinitionIfNotActive = new WeakMap();
+  /**
+   * Writes the mesgDefinition to the output stream
+   * @param {Object} mesgDefinition - the mesg definition to write
+   * @return {this}
+   */
+  writeMesgDefinition_fn = function(mesgDefinition) {
+    mesgDefinition.write(__privateGet(this, _outputStream));
+    __privateGet(this, _localMesgDefinitions)[mesgDefinition.localMesgNum] = mesgDefinition;
+    return this;
+  };
+  _localMesgDefinitions = new WeakMap();
+  _nextLocalMesgNum = new WeakMap();
+  _outputStream = new WeakMap();
+  _fieldDescriptions = new WeakMap();
+  var encoder_default = Encoder;
+  return __toCommonJS(index_exports);
+})();
