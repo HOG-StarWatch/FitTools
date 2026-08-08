@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { RequestBody } from './lib';
 import { handlePreview, handleGenerate } from './handlers';
-import { rateLimit, getRateLimitStats } from './middleware/rate-limit';
 import { version } from '../package.json';
 
 type Bindings = {
@@ -24,42 +23,13 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
-app.use('/api/*', rateLimit);
-
-app.get('/api/health', async (c) => {
-  const ip = c.req.header('CF-Connecting-IP') || 
-             c.req.header('X-Forwarded-For') || 
-             c.req.header('X-Real-IP') || 
-             'unknown';
-  
-  const stats = getRateLimitStats(ip);
-  
-  return c.json({
-    status: 'ok',
-    timestamp: Date.now(),
-    uptime: typeof process !== 'undefined' && process.uptime ? process.uptime() : 0,
-    rateLimit: stats
-  });
-});
-
 app.get('/api/status', async (c) => {
-  const ip = c.req.header('CF-Connecting-IP') || 
-             c.req.header('X-Forwarded-For') || 
-             c.req.header('X-Real-IP') || 
-             'unknown';
-  
-  const stats = getRateLimitStats(ip);
-  
   return c.json({
     status: 'available',
-    service: 'fit-tool',
+    service: 'HOG-StarWatch/FitTool',
     version,
-    rateLimit: {
-      used: stats.used,
-      remaining: stats.remaining,
-      limit: stats.limit,
-      resetTime: stats.resetTime
-    }
+    timestamp: Date.now(),
+    uptime: typeof process !== 'undefined' && process.uptime ? process.uptime() : 0,
   });
 });
 

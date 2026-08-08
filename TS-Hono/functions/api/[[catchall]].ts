@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { rateLimit } from '../../src/middleware/rate-limit';
 import type { RequestBody } from '../../src/lib';
 import { handlePreview, handleGenerate } from '../../src/handlers';
 import { version } from '../../package.json';
@@ -23,21 +22,13 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
-app.use('/api/*', rateLimit);
-
-app.get('/api/health', async (c) => {
-  return c.json({
-    status: 'ok',
-    timestamp: Date.now(),
-    uptime: 0,
-  });
-});
-
 app.get('/api/status', async (c) => {
   return c.json({
     status: 'available',
-    service: 'fit-tool',
+    service: 'HOG-StarWatch/FitTool',
     version,
+    timestamp: Date.now(),
+    uptime: 0,
   });
 });
 

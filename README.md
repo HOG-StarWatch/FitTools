@@ -258,21 +258,6 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 
 ---
 
-## 三、请求限流配置
-
-三种运行方式（Node 服务器 / Workers / Pages）均内置请求限流：**每小时 100 次 / IP**，由 `src/middleware/rate-limit.ts` 统一注入。
-
-如需调整，编辑 `src/middleware/rate-limit.ts`：
-
-```typescript
-const RATE_LIMIT = 100;        // 每个窗口内最大请求数
-const WINDOW_SECONDS = 3600;   // 窗口时长（秒）
-```
-
-> 限流按窗口期划分（`Math.floor(now / WINDOW_SECONDS / 1000)`），每个 IP + 窗口维度计数，超限返回 `429` 并附带 `retryAfter` 秒数。
-
----
-
 ## 四、常见部署问题
 
 ### Q: 部署后访问根路径 404
@@ -299,8 +284,6 @@ TS-Hono/
 │   ├── exporters.ts    # TCX / GPX / CSV 导出与文件分发
 │   ├── workers.ts      # Workers 入口
 │   ├── elevation.ts    # 海拔查询（8 种来源：不写入 / 模拟 / 6 种真实服务）
-│   └── middleware/
-│       └── rate-limit.ts  # 请求限流中间件（Node / Workers / Pages 通用）
 ├── functions/
 │   └── api/
 │       └── [[catchall]].ts  # Pages Functions 入口
@@ -456,44 +439,23 @@ TS-Hono/
 
 > FIT 文件写入 `sport` / `sub_sport` / `manufacturer_id` / `total_elapsed_time`（含 `elapsedExtraSeconds`）；`elevationSource=none` 时海拔字段留空。
 
-### GET /api/health
-
-健康检查端点。
-
-**响应：**
-
-```json
-{
-  "status": "ok",
-  "timestamp": 1715074500000,
-  "uptime": 3600
-}
-```
-
 ### GET /api/status
 
-服务状态端点，返回当前服务状态。
+服务状态端点，返回当前服务状态、版本、运行时间等信息。
 
 **响应：**
 
 ```json
 {
   "status": "available",
-  "service": "fit-tool",
-  "version": "<取自 package.json>"
+  "service": "HOG-StarWatch/FitTool",
+  "version": "2.0.0",
+  "timestamp": 1715074500000,
+  "uptime": 3600
 }
 ```
 
-### 请求限制
-
-三种部署方式（Node / Workers / Pages）均有限流保护：
-- **限制**：每小时 100 次请求（按 IP 地址）
-- **实现**：Node 为单进程内存计数，真实可靠；Workers / Pages 基于 isolate 内存 `Map`，计数为近似值（跨 isolate 不共享，冷启动会重置）
-- **触发限流**：返回 `429` 状态码，包含 `retryAfter` 字段
-- **响应头**：
-  - `X-RateLimit-Limit`: 最大请求数
-  - `X-RateLimit-Remaining`: 剩余请求数
-  - `X-RateLimit-Reset`: 重置时间戳
+> `uptime` 为服务运行时间（秒）。Node.js 环境返回 `process.uptime()`，Workers / Pages 环境固定为 `0`。
 
 ***
 

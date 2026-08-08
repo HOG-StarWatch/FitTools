@@ -7,7 +7,6 @@ import { handlePreview, handleGenerate } from './src/handlers';
 import { version } from './package.json';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { rateLimit } from './src/middleware/rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,21 +25,13 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
-app.use('/api/*', rateLimit);
-
-app.get('/api/health', async (c) => {
-  return c.json({
-    status: 'ok',
-    timestamp: Date.now(),
-    uptime: process.uptime(),
-  });
-});
-
 app.get('/api/status', async (c) => {
   return c.json({
     status: 'available',
-    service: 'fit-tool',
+    service: 'HOG-StarWatch/FitTool',
     version,
+    timestamp: Date.now(),
+    uptime: process.uptime(),
   });
 });
 
