@@ -2689,7 +2689,7 @@ async function checkServiceStatus() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const res = await fetch('/api/health', {
+    const res = await fetch('/api/status', {
       method: 'GET',
       signal: controller.signal
     });
@@ -2700,8 +2700,8 @@ async function checkServiceStatus() {
       statusEl.classList.remove('offline');
       statusEl.classList.add('online');
       const data = await res.json().catch(() => ({}));
-      const statusText = data.status || data.message || '在线';
-      statusEl.querySelector('.status-text').textContent = statusText;
+      const raw = data.status || data.message || '在线';
+      statusEl.querySelector('.status-text').textContent = raw === 'available' ? '在线' : raw;
     } else {
       throw new Error('Health check failed');
     }

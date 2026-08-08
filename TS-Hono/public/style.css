@@ -677,7 +677,7 @@ html, body {
 }
 
 .saved-routes:empty::before {
-  content: '鏆傛棤淇濆瓨鐨勮矾绾?;
+  content: '暂无保存的路线';
   display: block;
   text-align: center;
   color: var(--text-dim);
@@ -1537,7 +1537,8 @@ html, body {
 }
 
 .notice-window-body {
-  height: 100px;
+  flex: 1;
+  min-height: 0;
   padding: 6px 8px;
   overflow-y: auto;
 }
