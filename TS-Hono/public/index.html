@@ -322,14 +322,14 @@
             <div class="form-row">
               <label class="options-title" for="intervalExampleSelect">间歇模板</label>
               <select id="intervalExampleSelect" class="styled-select">
-                <option value="10x0.4" selected>10 组 × 400m 快 + 慢</option>
+                <option value="4x0.4" selected>4 组 × 400m 快 + 慢</option>
                 <option value="8x0.8">8 组 × 800m 快 + 慢</option>
                 <option value="6x1.0">6 组 × 1000m 快 + 慢</option>
                 <option value="5x1.2">5 组 × 1200m 快 + 慢</option>
               </select>
             </div>
             <div class="interval-inputs">
-              <label>组数 <input type="number" id="intervalReps" min="1" max="30" value="10"></label>
+              <label>组数 <input type="number" id="intervalReps" min="1" max="30" value="4"></label>
               <label>快跑 km/组 <input type="number" id="intervalFastKm" min="0.1" step="0.1" value="0.4"></label>
             </div>
           </div>
@@ -337,12 +337,12 @@
             <p class="options-title">传感器数据</p>
             <div class="checkbox-grid">
               <label class="checkbox-label">
-                <input type="checkbox" id="includeHeartRate">
+                <input type="checkbox" id="includeHeartRate" checked>
                 <span class="checkbox-custom"></span>
                 <span>心率</span>
               </label>
               <label class="checkbox-label">
-                <input type="checkbox" id="includePower">
+                <input type="checkbox" id="includePower" checked>
                 <span class="checkbox-custom"></span>
                 <span>功率</span>
               </label>

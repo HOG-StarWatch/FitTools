@@ -54,9 +54,13 @@ app.use('/*', serveStatic({ root: join(__dirname, 'public') }));
 const port = Number(process.env.PORT) || 3000;
 
 try {
-  serve({
+  const server = serve({
     fetch: app.fetch,
     port,
+  });
+  server.on('error', (error) => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   });
   console.log(`Server listening on http://localhost:${port}`);
 } catch (error) {

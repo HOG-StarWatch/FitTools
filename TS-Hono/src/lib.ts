@@ -3,15 +3,19 @@ import type { RecordData } from './fit';
 import { resolveDevice } from './device';
 
 export const MAX_POINTS = 10000;
+export const MAX_EXPANDED_POINTS = 50000;
 export const ROUTE_CLOSURE_THRESHOLD_METERS = 5;
 export const DEFAULT_WEIGHT_KG = 65;
 export const DEFAULT_POWER_FACTOR = 1.3;
+export const MAX_POWER_FACTOR = 10;
 export const DEFAULT_AVG_CADENCE = 170;
 export const DEFAULT_WALK_CADENCE = 100;
 export const DEFAULT_PACE_SEC_PER_KM = 360;
 export const DEFAULT_WALK_PACE_SEC_PER_KM = 720;
 export const DEFAULT_HR_REST = 60;
 export const DEFAULT_HR_MAX = 180;
+export const MIN_HR_REST = 30;
+export const MAX_HR_REST = 120;
 export const WARMUP_DURATION_SEC = 60;
 export const MIN_WEIGHT_KG = 30;
 export const MAX_WEIGHT_KG = 150;
@@ -115,7 +119,7 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 function offsetPointMeters(point: RoutePoint, offsetLatMeters: number, offsetLonMeters: number): RoutePoint {
   const metersPerDegLat = 111320;
-  const metersPerDegLon = 111320 * Math.cos((point.lat * Math.PI) / 180);
+  const metersPerDegLon = 111320 * Math.max(0.01, Math.cos((point.lat * Math.PI) / 180));
   return {
     lat: point.lat + offsetLatMeters / metersPerDegLat,
     lng: point.lng + offsetLonMeters / metersPerDegLon,
@@ -208,8 +212,8 @@ function computeSamples(
   const phase2 = Math.random() * Math.PI * 2;
   const baseAlt = 50 + Math.random() * 30;
 
-  const reps = intervalReps && intervalReps > 0 ? Math.round(intervalReps) : 6;
-  const fastKm = intervalFastKm && intervalFastKm > 0 ? intervalFastKm : 0.8;
+  const reps = intervalReps && intervalReps > 0 ? Math.max(1, Math.round(intervalReps)) : 4;
+  const fastKm = intervalFastKm && intervalFastKm > 0 ? intervalFastKm : 0.4;
   const workWindow = 0.8;
   const repKm = totalDistanceKm > 0 ? (totalDistanceKm * workWindow) / reps : 1;
   const fastFrac = Math.min(1, fastKm / repKm);
@@ -384,7 +388,8 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
 
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
-    if (typeof p.lat !== 'number' || typeof p.lng !== 'number' ||
+    if (!p || typeof p !== 'object' ||
+        typeof p.lat !== 'number' || typeof p.lng !== 'number' ||
         !Number.isFinite(p.lat) || !Number.isFinite(p.lng) ||
         p.lat < -90 || p.lat > 90 || p.lng < -180 || p.lng > 180) {
       return { error: `第 ${i + 1} 个轨迹点坐标无效（纬度 -90~90，经度 -180~180）` };
@@ -396,10 +401,10 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     return { error: 'startTime 格式不正确' };
   }
 
-  const weight = (Number.isFinite(Number(weightKg)) && (weightKg ?? 0) > MIN_WEIGHT_KG && (weightKg ?? 0) < MAX_WEIGHT_KG)
+  const weight = (Number.isFinite(Number(weightKg)) && (weightKg ?? 0) >= MIN_WEIGHT_KG && (weightKg ?? 0) <= MAX_WEIGHT_KG)
     ? Number(weightKg) : DEFAULT_WEIGHT_KG;
   const power = (Number.isFinite(Number(powerFactor)) && (powerFactor ?? 0) > 0)
-    ? Number(powerFactor) : DEFAULT_POWER_FACTOR;
+    ? Math.min(MAX_POWER_FACTOR, Number(powerFactor)) : DEFAULT_POWER_FACTOR;
   const drift = Number.isFinite(Number(gpsDrift)) ? Number(gpsDrift) : 0;
   const resolvedSportType: 'running' | 'walking' = sportType === 'walking' ? 'walking' : 'running';
   const defaultPace = resolvedSportType === 'walking' ? DEFAULT_WALK_PACE_SEC_PER_KM : DEFAULT_PACE_SEC_PER_KM;
@@ -407,8 +412,9 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
   const targetAvgCadence = Number.isFinite(Number(avgCadence)) ? Number(avgCadence) : defaultCadence;
   const pace = (Number(paceSecondsPerKm) > 0 && Number(paceSecondsPerKm) < 2000)
     ? Number(paceSecondsPerKm) : defaultPace;
-  const hrRestVal = Number.isFinite(Number(hrRest)) ? Number(hrRest) : DEFAULT_HR_REST;
   const hrMaxVal = Number.isFinite(Number(hrMax)) ? Math.max(100, Math.min(220, Number(hrMax))) : DEFAULT_HR_MAX;
+  let hrRestVal = Number.isFinite(Number(hrRest)) ? Math.max(MIN_HR_REST, Math.min(MAX_HR_REST, Number(hrRest))) : DEFAULT_HR_REST;
+  if (hrRestVal >= hrMaxVal) hrRestVal = Math.max(MIN_HR_REST, hrMaxVal - 20);
   const lapsRaw = Number(lapCount);
   const laps = (Number.isFinite(lapsRaw) && lapsRaw > 0) ? lapsRaw : 1;
   const variantRaw = Number(variantIndex);
@@ -424,12 +430,15 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
   if (resolvedSportType === 'walking') {
     subSport = fitSubSport === 'indoorWalking' ? 'indoorWalking'
       : fitSubSport === 'casualWalking' ? 'casualWalking' : 'generic';
-  } else if (customSub !== undefined && Number.isFinite(customSub)) {
-    subSport = Math.max(0, Math.min(255, Math.floor(customSub)));
   } else if (typeof fitSubSport === 'number' && Number.isFinite(fitSubSport)) {
     subSport = Math.max(0, Math.min(255, Math.floor(fitSubSport)));
   } else if (typeof fitSubSport === 'string' && fitSubSport.trim()) {
     subSport = fitSubSport.trim();
+  }
+
+  // 自定义子运动数值优先级最高，walking 模式下同样覆盖默认子运动
+  if (customSub !== undefined && Number.isFinite(customSub)) {
+    subSport = Math.max(0, Math.min(255, Math.floor(customSub)));
   }
 
   const device = resolveDevice(deviceType);
@@ -442,6 +451,11 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
   const shouldApplyDrift = drift > 0;
   const fullLaps = Math.floor(usedLaps);
   const partialLap = usedLaps - fullLaps;
+
+  const expandedPointCount = Math.ceil(basePoints.length * fullLaps) + Math.floor(basePoints.length * partialLap);
+  if (expandedPointCount > MAX_EXPANDED_POINTS) {
+    return { error: `展开后的轨迹点数量超过上限 (${MAX_EXPANDED_POINTS})，请减少圈数或轨迹点` };
+  }
 
   for (let i = 0; i < fullLaps; i++) {
     let offsetLatMeters = 0;
@@ -473,6 +487,10 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     }
   }
 
+  if (allPoints.length < 2) {
+    return { error: '圈数过小导致展开后轨迹点不足，请增加圈数或轨迹点' };
+  }
+
   const distances = [0];
   let totalDist = 0;
   for (let i = 1; i < allPoints.length; i++) {
@@ -481,7 +499,7 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     distances.push(totalDist);
   }
 
-  if (totalDist === 0) {
+  if (!Number.isFinite(totalDist) || totalDist === 0) {
     return { error: '轨迹距离为 0，请绘制更长的路线' };
   }
 

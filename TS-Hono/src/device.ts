@@ -40,6 +40,13 @@ export function resolveDevice(deviceType?: string | number): ResolvedDevice | un
     return undefined;
   }
   const key = String(deviceType).trim().toLowerCase();
+  if (/^\d+$/.test(key)) {
+    const n = Number(key);
+    if (Number.isFinite(n) && n >= 0 && n <= 0xffff) {
+      return { manufacturer: Math.floor(n), product: 1 };
+    }
+    return undefined;
+  }
   const brand = DEVICE_BRANDS.find(
     b => b.name === key || b.label.toLowerCase() === key
   );

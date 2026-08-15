@@ -213,11 +213,11 @@ async function searchLocation() {
     if (searchMarker) map.removeLayer(searchMarker);
     
     searchMarker = L.marker([lat, lon]).addTo(map)
-      .bindPopup(`<b>${location.display_name}</b>`)
+      .bindPopup(`<b>${escapeHtml(location.display_name)}</b>`)
       .openPopup();
     
     map.flyTo([lat, lon], 15, { duration: 1.5 });
-    resultDiv.innerHTML = `<span style="color: #10b981;">已定位：${location.display_name.split(',')[0]}</span>`;
+    resultDiv.innerHTML = `<span style="color: #10b981;">已定位：${escapeHtml(location.display_name.split(',')[0])}</span>`;
     
     setTimeout(() => {
       if (resultDiv.innerHTML.includes('已定位')) resultDiv.innerHTML = '';
@@ -522,7 +522,9 @@ function switchMapSource(sourceType) {
 
   const currentCenter = map.getCenter();
   const currentZoom = map.getZoom();
-  const oldCoordSys = getCurrentCoordSys();
+  const selectEl = document.getElementById('mapSourceSelect');
+  // change 事件触发时 select.value 已是新值，必须用 data-prev 里保存的旧源计算旧坐标系
+  const oldCoordSys = getMapCoordSys(selectEl?.dataset.prev || 'gaode_vec');
 
   // 保存当前地图中心点的 WGS84 坐标
   let wgsCenter;
@@ -604,7 +606,10 @@ function switchMapSource(sourceType) {
   refreshRouteDisplay();
 
   const select = document.getElementById('mapSourceSelect');
-  if (select) updateMessage(`已切换到 ${select.options[select.selectedIndex].text}`);
+  if (select) {
+    select.dataset.prev = sourceType;
+    updateMessage(`已切换到 ${select.options[select.selectedIndex].text}`);
+  }
 }
 
 function refreshRouteDisplay() {
@@ -1517,7 +1522,7 @@ function updateDistanceInfo() {
   const baseMeters = computeDistanceMeters(routePoints);
   const baseKm = baseMeters / 1000;
   const lapInput = document.getElementById("lapCount");
-  const laps = Math.max(1, parseFloat(lapInput?.value) || 1);
+  const laps = Math.max(0.1, parseFloat(lapInput?.value) || 1);
   const totalKm = baseKm * laps;
 
   let smoothInfo = '';
@@ -1567,7 +1572,7 @@ function updateRouteStatus() {
   const last = routePoints[routePoints.length - 1];
   const distance = haversineDistance(first.lat, first.lng, last.lat, last.lng);
   
-  statusEl.textContent = distance < 10
+  statusEl.textContent = distance < 5
     ? `路线状态：已闭合（${routePoints.length}个点）`
     : `路线状态：未闭合（${routePoints.length}个点）`;
 }
@@ -1621,7 +1626,7 @@ function closeRoute() {
   const first = routePoints[0];
   const last = routePoints[routePoints.length - 1];
   const d = haversineDistance(first.lat, first.lng, last.lat, last.lng);
-  if (d < 10) { updateMessage('路线已经闭合'); return; }
+  if (d < 5) { updateMessage('路线已经闭合'); return; }
   pushHistory();
   routePoints.push({ lat: first.lat, lng: first.lng });
   updateMessage('路线已闭合');
@@ -1999,15 +2004,21 @@ document.getElementById('manufacturerModal')?.addEventListener('click', (e) => {
 
 function collectSharedParams() {
   const sportType = document.getElementById("sportTypeSelect")?.value || "running";
+  let sportName = document.getElementById("sportNameSelect")?.value || (sportType === "walking" ? "健走" : "跑步");
+  if (sportName === "自定义") {
+    sportName = prompt("请输入自定义运动名称：", sportType === "walking" ? "健走" : "跑步") || (sportType === "walking" ? "健走" : "跑步");
+    const nameSel = document.getElementById("sportNameSelect");
+    if (nameSel) nameSel.value = sportName;
+  }
   return {
     sportType,
     heightCm: Number(document.getElementById("heightInput")?.value) || 170,
     deviceType: resolveDeviceTypeFromUI(),
-    sportName: document.getElementById("sportNameSelect")?.value || (sportType === "walking" ? "健走" : "跑步"),
+    sportName,
     fitSubSport: document.getElementById("fitSubSportSelect")?.value || "generic",
     customSubSport: document.getElementById("customSubSport")?.value || undefined,
     workoutMode: document.getElementById("workoutModeSelect")?.value || "steady",
-    intervalReps: parseInt(document.getElementById("intervalReps")?.value) || 10,
+    intervalReps: parseInt(document.getElementById("intervalReps")?.value) || 4,
     intervalFastKm: parseFloat(document.getElementById("intervalFastKm")?.value) || 0.4,
     elapsedExtraSeconds: parseInt(document.getElementById("elapsedExtraInput")?.value) || 0,
     format: document.getElementById("exportFormatSelect")?.value || "fit",
@@ -2071,7 +2082,7 @@ async function generateFit() {
   
   const hrRest = parseInt(document.getElementById("hrRest")?.value) || 60;
   const hrMax = parseInt(document.getElementById("hrMax")?.value) || 180;
-  const lapCount = Math.max(1, parseFloat(document.getElementById("lapCount")?.value) || 1);
+  const lapCount = Math.max(0.1, parseFloat(document.getElementById("lapCount")?.value) || 1);
   const exportCount = Math.max(1, Math.min(10, parseInt(document.getElementById("exportCount")?.value) || 1));
   const shared = collectSharedParams();
   const walking = shared.sportType === "walking";
@@ -2495,7 +2506,7 @@ async function previewActivity() {
   
   const hrRest = parseInt(document.getElementById("hrRest")?.value) || 60;
   const hrMax = parseInt(document.getElementById("hrMax")?.value) || 180;
-  const lapCount = Math.max(1, parseFloat(document.getElementById("lapCount")?.value) || 1);
+  const lapCount = Math.max(0.1, parseFloat(document.getElementById("lapCount")?.value) || 1);
   const weightKg = Number(document.getElementById("weightInput")?.value) || 65;
   const powerFactor = parseFloat(document.getElementById("powerFactor")?.value) || 1.3;
   const gpsDrift = parseFloat(document.getElementById("gpsDrift")?.value) || 0;
@@ -2518,7 +2529,7 @@ async function previewActivity() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startTime,
-        points: routePoints,
+        points: getActivePoints(),
         paceSecondsPerKm, hrRest, hrMax, lapCount,
         weightKg, powerFactor, gpsDrift, avgCadence,
         elevationSource,

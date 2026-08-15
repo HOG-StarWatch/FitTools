@@ -42,14 +42,17 @@ export function buildTcx(result: ProcessedRoute, ctx: ExportContext): string {
   const includePower = ctx.sensorOptions?.includePower !== false;
   const sessionElapsed = totalDurationSec + elapsedExtraSeconds;
   const activityType = sportType === 'walking' ? 'Walking' : 'Running';
+  const realAltitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
 
   let trackpoints = '';
-  for (const s of samples) {
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const altitude = realAltitudes ? realAltitudes[i] : s.altitude;
     const t = new Date(startDate.getTime() + s.timeSec * 1000);
     let tp = '      <Trackpoint>\n';
     tp += `        <Time>${t.toISOString()}</Time>\n`;
     tp += `        <Position>\n          <LatitudeDegrees>${fmtNum(s.lat, 6)}</LatitudeDegrees>\n          <LongitudeDegrees>${fmtNum(s.lng, 6)}</LongitudeDegrees>\n        </Position>\n`;
-    if (includeAltitude) tp += `        <AltitudeMeters>${fmtNum(s.altitude)}</AltitudeMeters>\n`;
+    if (includeAltitude) tp += `        <AltitudeMeters>${fmtNum(altitude)}</AltitudeMeters>\n`;
     tp += `        <DistanceMeters>${fmtNum(s.distance)}</DistanceMeters>\n`;
     if (includeHr) tp += `        <HeartRateBpm><Value>${Math.round(s.heartRate)}</Value></HeartRateBpm>\n`;
     tp += '        <Extensions>\n          <ns3:TPX xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">\n';
@@ -89,12 +92,15 @@ export function buildGpx(result: ProcessedRoute, ctx: ExportContext): string {
   const includeHr = ctx.sensorOptions?.includeHeartRate !== false;
   const includeCadence = ctx.sensorOptions?.includeCadence !== false;
   const name = `${filenamePrefix(result)}${variant}`;
+  const realAltitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
 
   let points = '';
-  for (const s of samples) {
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const altitude = realAltitudes ? realAltitudes[i] : s.altitude;
     const t = new Date(startDate.getTime() + s.timeSec * 1000);
     let trkpt = `      <trkpt lat="${fmtNum(s.lat, 6)}" lon="${fmtNum(s.lng, 6)}">\n`;
-    if (includeAltitude) trkpt += `        <ele>${fmtNum(s.altitude)}</ele>\n`;
+    if (includeAltitude) trkpt += `        <ele>${fmtNum(altitude)}</ele>\n`;
     trkpt += `        <time>${t.toISOString()}</time>\n`;
     if (includeHr || includeCadence) {
       trkpt += '        <extensions>\n          <gpxtpx:TrackPointExtension xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n';
@@ -125,6 +131,7 @@ export function buildCsv(result: ProcessedRoute, ctx: ExportContext): string {
   const includeHr = ctx.sensorOptions?.includeHeartRate !== false;
   const includeCadence = ctx.sensorOptions?.includeCadence !== false;
   const includePower = ctx.sensorOptions?.includePower !== false;
+  const realAltitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
 
   const header = [
     'timestamp', 'latitude', 'longitude',
@@ -135,13 +142,14 @@ export function buildCsv(result: ProcessedRoute, ctx: ExportContext): string {
     ...(includePower ? ['power_w'] : []),
   ].join(',');
 
-  const rows = samples.map((s) => {
+  const rows = samples.map((s, i) => {
+    const altitude = realAltitudes ? realAltitudes[i] : s.altitude;
     const t = new Date(startDate.getTime() + s.timeSec * 1000);
     const row = [
       t.toISOString(),
       fmtNum(s.lat, 6),
       fmtNum(s.lng, 6),
-      ...(includeAltitude ? [fmtNum(s.altitude)] : []),
+      ...(includeAltitude ? [fmtNum(altitude)] : []),
       fmtNum(s.speed, 2),
       fmtNum(s.distance, 2),
       ...(includeHr ? [String(Math.round(s.heartRate))] : []),
@@ -170,7 +178,7 @@ export function exportActivityFile(
   const filename = `${filenamePrefix(result)}${result.variant}.${format}`;
   switch (format) {
     case 'tcx':
-      return { body: buildTcx(result, ctx), contentType: 'application/octet-stream', filename };
+      return { body: buildTcx(result, ctx), contentType: 'application/gpx+xml', filename };
     case 'gpx':
       return { body: buildGpx(result, ctx), contentType: 'application/gpx+xml', filename };
     case 'csv':

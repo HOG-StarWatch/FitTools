@@ -108,6 +108,66 @@ function isOpenTopoSource(source: ElevationSource): boolean {
     source === 'opentopodata-eudem25m';
 }
 
+const ELEVATION_CONCURRENCY = 8;
+
+interface DedupeJob {
+  point: RoutePoint;
+  firstIndex: number;
+}
+
+/**
+ * 按 6 位小数坐标去重，返回唯一坐标任务与每个原始点的首次出现索引。
+ */
+function dedupePoints(points: RoutePoint[]): { jobs: DedupeJob[]; firstIndexes: number[] } {
+  const seen = new Map<string, number>();
+  const firstIndexes = new Array<number>(points.length);
+  const jobs: DedupeJob[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+    const first = seen.get(key);
+    if (first === undefined) {
+      seen.set(key, i);
+      firstIndexes[i] = i;
+      jobs.push({ point: p, firstIndex: i });
+    } else {
+      firstIndexes[i] = first;
+    }
+  }
+
+  return { jobs, firstIndexes };
+}
+
+/**
+ * 将唯一坐标任务按 batchSize 分批，并以受限并发执行 fetchBatch。
+ */
+async function runElevationBatches(
+  jobs: DedupeJob[],
+  batchSize: number,
+  fetchBatch: (batch: DedupeJob[]) => Promise<Array<{ firstIndex: number; elevation: number }>>
+): Promise<Map<number, number>> {
+  const elevations = new Map<number, number>();
+  const concurrency = Math.max(1, ELEVATION_CONCURRENCY);
+
+  for (let start = 0; start < jobs.length; start += batchSize * concurrency) {
+    const window = jobs.slice(start, start + batchSize * concurrency);
+    const batches: DedupeJob[][] = [];
+    for (let b = 0; b < window.length; b += batchSize) {
+      batches.push(window.slice(b, b + batchSize));
+    }
+
+    const settled = await Promise.all(batches.map(batch => fetchBatch(batch)));
+    for (const list of settled) {
+      for (const item of list) {
+        elevations.set(item.firstIndex, item.elevation);
+      }
+    }
+  }
+
+  return elevations;
+}
+
 /**
  * 按配置的海拔源批量查询真实海拔。
  * - none：不写入海拔（altitudes 为 null，状态 none，FIT 中 altitude 字段留空）
@@ -156,13 +216,10 @@ export async function fetchAltitudesOrNull(
 }
 
 async function fetchAltitudesOpenElevation(points: RoutePoint[], config: ElevationConfig): Promise<number[]> {
-  const altitudes: number[] = [];
+  const { jobs, firstIndexes } = dedupePoints(points);
 
-  for (let start = 0; start < points.length; start += config.batchSize) {
-    const end = Math.min(start + config.batchSize, points.length);
-    const chunk = points.slice(start, end);
-
-    const locations: ElevationLocation[] = chunk.map(p => ({
+  const elevations = await runElevationBatches(jobs, config.batchSize, async (batch) => {
+    const locations: ElevationLocation[] = batch.map(({ point: p }) => ({
       latitude: p.lat,
       longitude: p.lng,
     }));
@@ -174,27 +231,29 @@ async function fetchAltitudesOpenElevation(points: RoutePoint[], config: Elevati
     );
 
     const results = response?.results;
-    if (!results || results.length !== chunk.length) {
+    if (!results || results.length !== batch.length) {
       throw new Error('Open-Elevation 返回数量与请求数量不一致');
     }
 
-    for (const result of results) {
-      altitudes.push(result.elevation == null ? 0 : result.elevation);
-    }
-  }
+    return batch.map((job, i) => ({
+      firstIndex: job.firstIndex,
+      elevation: results[i].elevation == null ? 0 : results[i].elevation,
+    }));
+  });
 
+  const altitudes = new Array<number>(points.length).fill(0);
+  for (let i = 0; i < points.length; i++) {
+    altitudes[i] = elevations.get(firstIndexes[i]) ?? 0;
+  }
   return altitudes;
 }
 
 async function fetchAltitudesOpenTopoData(points: RoutePoint[], config: ElevationConfig): Promise<number[]> {
   const dataset = config.source === 'opentopodata' ? config.openTopoDataset : openTopoDatasetFor(config.source);
-  const altitudes: number[] = [];
+  const { jobs, firstIndexes } = dedupePoints(points);
 
-  for (let start = 0; start < points.length; start += config.openTopoBatchSize) {
-    const end = Math.min(start + config.openTopoBatchSize, points.length);
-    const chunk = points.slice(start, end);
-
-    const locationsStr = chunk.map(p => `${p.lat},${p.lng}`).join('|');
+  const elevations = await runElevationBatches(jobs, config.openTopoBatchSize, async (batch) => {
+    const locationsStr = batch.map(({ point: p }) => `${p.lat},${p.lng}`).join('|');
 
     const response = await postJson<OpenTopoDataResponse>(
       `${config.openTopoBaseUrl.replace(/\/$/, '')}/v1/${dataset}`,
@@ -203,15 +262,20 @@ async function fetchAltitudesOpenTopoData(points: RoutePoint[], config: Elevatio
     );
 
     const results = response?.results;
-    if (!results || results.length !== chunk.length) {
+    if (!results || results.length !== batch.length) {
       throw new Error('OpenTopoData 返回数量与请求数量不一致');
     }
 
-    for (const result of results) {
-      altitudes.push(result.elevation == null ? 0 : result.elevation);
-    }
-  }
+    return batch.map((job, i) => ({
+      firstIndex: job.firstIndex,
+      elevation: results[i].elevation == null ? 0 : results[i].elevation,
+    }));
+  });
 
+  const altitudes = new Array<number>(points.length).fill(0);
+  for (let i = 0; i < points.length; i++) {
+    altitudes[i] = elevations.get(firstIndexes[i]) ?? 0;
+  }
   return altitudes;
 }
 

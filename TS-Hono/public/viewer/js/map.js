@@ -4,24 +4,115 @@ window.MapView = {
   _polyline: null,
   _markers: [],
   _downloaded: null,
+  _pts: null,
 
+  // 与主项目 main.js 保持一致的地图源
   _SOURCES: {
     osm: {
-      url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-      opts: { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 贡献者' },
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      opts: { subdomains: ["a", "b", "c"], maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 贡献者' },
     },
-    gaode: {
-      url: "https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
-      opts: { maxZoom: 18, attribution: '&copy; 高德地图', subdomains: "12" },
+    osmde: {
+      url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+      opts: { maxZoom: 18, attribution: '&copy; OpenStreetMap DE' },
     },
-    tencent: {
-      url: "https://rt{s}.map.gtimg.com/tile?z={z}&x={x}&y={y}&styleid=1",
-      opts: { maxZoom: 20, attribution: '&copy; 腾讯地图', subdomains: ["rt0", "rt1", "rt2", "rt3"] },
+    osmfr: {
+      url: "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+      opts: { subdomains: ["a", "b", "c"], maxZoom: 20, attribution: '&copy; OpenStreetMap France' },
     },
-    "carto-dark": {
+    osm_cn: {
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      opts: { subdomains: ["a", "b", "c"], maxZoom: 19, attribution: '&copy; OpenStreetMap' },
+    },
+    cyclOSM: {
+      url: "https://{s}.tile.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+      opts: { subdomains: ["a", "b", "c"], maxZoom: 20, attribution: '&copy; CyclOSM' },
+    },
+    wikimedia: {
+      url: "https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png",
+      opts: { subdomains: ["a", "b", "c"], maxZoom: 19, attribution: '&copy; Wikimedia' },
+    },
+    arcgis_street: {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      opts: { maxZoom: 19, attribution: 'Tiles &copy; Esri' },
+    },
+    arcgis_satellite: {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      opts: { maxZoom: 19, attribution: 'Tiles &copy; Esri' },
+    },
+    cartodb: {
+      url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      opts: { subdomains: ["a", "b", "c", "d"], maxZoom: 20, attribution: '&copy; CartoDB' },
+    },
+    cartodb_dark: {
       url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      opts: { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' },
+      opts: { subdomains: ["a", "b", "c", "d"], maxZoom: 20, attribution: '&copy; CartoDB' },
     },
+    stamen_water: {
+      url: "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg",
+      opts: { subdomains: ["a", "b", "c", "d"], maxZoom: 18, attribution: '&copy; Stamen/Stadia' },
+    },
+    stamen_terrain: {
+      url: "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.png",
+      opts: { subdomains: ["a", "b", "c", "d"], maxZoom: 18, attribution: '&copy; Stamen/Stadia' },
+    },
+    gaode_vec: {
+      url: "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+      opts: { subdomains: ["1", "2", "3", "4"], maxZoom: 19, attribution: '&copy; 高德地图' },
+    },
+    gaode_img: {
+      url: "https://webst0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}",
+      opts: { subdomains: ["1", "2", "3", "4"], maxZoom: 18, attribution: '&copy; 高德地图' },
+    },
+    gaode_rel: {
+      url: "https://webst0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=10&x={x}&y={y}&z={z}",
+      opts: { subdomains: ["1", "2", "3", "4"], maxZoom: 16, attribution: '&copy; 高德地图' },
+    },
+    tencent_vec: {
+      url: "https://rt0{s}.map.gtimg.com/tile?z={z}&x={x}&y={y}&styleid=2",
+      opts: { subdomains: ["1", "2", "3"], maxZoom: 18, attribution: '&copy; 腾讯地图' },
+    },
+    tencent_sat: {
+      url: "https://rt0{s}.map.gtimg.com/tile?z={z}&x={x}&y={y}&styleid=0",
+      opts: { subdomains: ["1", "2", "3"], maxZoom: 18, attribution: '&copy; 腾讯地图' },
+    },
+    baidu_vec: {
+      url: "https://maponline.bdimg.com/tile/?qt=tile&x={x}&y={y}&z={z}&styles=pl&scaler=1",
+      opts: { maxZoom: 19, attribution: '&copy; 百度地图' },
+    },
+    baidu_img: {
+      url: "https://maponline.bdimg.com/tile/?qt=tile&x={x}&y={y}&z={z}&styles=sl&scaler=1",
+      opts: { maxZoom: 19, attribution: '&copy; 百度地图' },
+    },
+    tianditu: {
+      url: "https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=fc97d01c0e3e98289295da844e1f2dad",
+      opts: { subdomains: ["0", "1", "2", "3", "4", "5", "6", "7"], minZoom: 5, maxZoom: 20, maxNativeZoom: 18, attribution: '&copy; 天地图' },
+    },
+    satellite: {
+      url: "https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=fc97d01c0e3e98289295da844e1f2dad",
+      opts: { subdomains: ["0", "1", "2", "3", "4", "5", "6", "7"], minZoom: 5, maxZoom: 20, maxNativeZoom: 18, attribution: '&copy; 天地图' },
+    },
+  },
+
+  _tiandituKey() {
+    return window.FIT_VIEWER_TIANDITU_KEY || "fc97d01c0e3e98289295da844e1f2dad";
+  },
+
+  _sourceKey() {
+    return U.$("#map-source")?.value || "gaode_vec";
+  },
+
+  // 将 WGS84 轨迹点投影到当前地图源的坐标系
+  _project(lat, lng) {
+    if (!window.CoordProject) return { lat, lng };
+    return window.CoordProject.toMap(lat, lng, this._sourceKey());
+  },
+
+  _projectPts(pts) {
+    return pts.map((p) => {
+      const q = this._project(p.lat, p.lng);
+      return { ...p, lat: q.lat, lng: q.lng };
+    });
   },
 
   init() {
@@ -31,12 +122,17 @@ window.MapView = {
 
   applySource(key) {
     const src = this._SOURCES[key] || this._SOURCES.osm;
+    let url = src.url;
+    if ((key === "tianditu" || key === "satellite") && window.FIT_VIEWER_TIANDITU_KEY) {
+      url = url.replace(/tk=[^&]*/, "tk=" + encodeURIComponent(window.FIT_VIEWER_TIANDITU_KEY));
+    }
     if (this._tileLayer) {
       this._map.removeLayer(this._tileLayer);
       this._tileLayer = null;
     }
     if (!this._map) return;
-    this._tileLayer = L.tileLayer(src.url, src.opts).addTo(this._map);
+    this._tileLayer = L.tileLayer(url, src.opts).addTo(this._map);
+    this._reproject();
   },
 
   collectedPts() {
@@ -57,17 +153,19 @@ window.MapView = {
     }
     container.style.background = "";
 
+    this._pts = pts;
     this._downloaded = this._downsample(pts, 20000);
 
     if (!this._map) {
       this._map = L.map(container, { zoomControl: true });
-      this.applySource(U.$("#map-source").value);
+      this.applySource(this._sourceKey());
     }
 
     if (this._polyline) this._polyline.remove();
     this._clearMarkers();
 
-    const latlngs = this._downloaded.map((p) => [p.lat, p.lng]);
+    const projected = this._projectPts(this._downloaded);
+    const latlngs = projected.map((p) => [p.lat, p.lng]);
     this._polyline = L.polyline(latlngs, { color: "#d946ef", weight: 4, opacity: 0.85 }).addTo(this._map);
 
     this._addLapMarkers(pts);
@@ -77,6 +175,18 @@ window.MapView = {
 
     const dist = this._trackDistance(pts);
     hint.textContent = `${pts.length.toLocaleString()} 个 GPS 点（绘制 ${this._downloaded.length.toLocaleString()} 个）\u00B7 轨迹约 ${(dist / 1000).toFixed(2)} km`;
+  },
+
+  // 切换地图源后重新投影已绘制的轨迹与标记
+  _reproject() {
+    if (!this._polyline || !this._downloaded) return;
+    const projected = this._projectPts(this._downloaded);
+    this._polyline.setLatLngs(projected.map((p) => [p.lat, p.lng]));
+    this._clearMarkers();
+    if (this._pts) {
+      this._addLapMarkers(this._pts);
+      this._addEndpoints(this._pts);
+    }
   },
 
   _downsample(pts, max) {
@@ -122,7 +232,8 @@ window.MapView = {
 
   _addLapMarkers(pts) {
     for (const lap of this._lapMarkers(pts)) {
-      const mk = L.circleMarker([lap.p.lat, lap.p.lng], {
+      const q = this._project(lap.p.lat, lap.p.lng);
+      const mk = L.circleMarker([q.lat, q.lng], {
         radius: 8,
         color: "#ffffff",
         weight: 2,
@@ -136,13 +247,14 @@ window.MapView = {
 
   _addEndpoints(pts) {
     const add = (p, text, color, label) => {
+      const q = this._project(p.lat, p.lng);
       const icon = L.divIcon({
         html: `<div style="background:${color};color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)">${text}</div>`,
         className: "",
         iconSize: [22, 22],
         iconAnchor: [11, 11],
       });
-      const mk = L.marker([p.lat, p.lng], { icon }).addTo(this._map);
+      const mk = L.marker([q.lat, q.lng], { icon }).addTo(this._map);
       const t = p.r.timestamp instanceof Date ? U.toIsoLocal(p.r.timestamp) : "";
       mk.bindPopup(`<b>${label}</b>${t ? `<br/>${t}` : ""}`);
       this._markers.push(mk);
@@ -163,5 +275,6 @@ window.MapView = {
     this._polyline = null;
     this._markers = [];
     this._downloaded = null;
+    this._pts = null;
   },
 };

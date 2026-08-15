@@ -87,3 +87,16 @@ export const onRequestGet = async (context: {
   if (!isApiPath(context.request)) return context.next();
   return handleRequest(context);
 };
+
+export const onRequestOptions = async (context: {
+  request: Request;
+  params: Record<string, string | string[]>;
+  env: Bindings;
+  waitUntil: (promise: Promise<unknown>) => void;
+  passThroughOnException: () => void;
+  props: unknown;
+  next: () => Promise<Response>;
+}) => {
+  if (!isApiPath(context.request)) return context.next();
+  return handleRequest(context);
+};

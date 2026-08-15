@@ -40,7 +40,7 @@ FitTool 是一款基于 Web 的校园跑路线生成工具，支持在地图上�
 - **导出格式**：FIT / TCX / GPX / CSV 四种格式，多份可打包 ZIP
 - **数据预览**：实时预览配速、心率、海拔曲线，统计训练时长（可加时长）、TRIMP 运动负荷、最高/最低海拔等
 - **真实海拔**：Open-Elevation / OpenTopoData（SRTM90 / SRTM30 / ASTER30 / EUDEM25）/ Open-Meteo 六种真实海拔源，失败自动回退模拟海拔；可"不写入海拔"（FIT 海拔字段留空）
-- **传感器开关**：生成 FIT 时可按需开启/关闭心率、功率、步频、步态数据（健走时心率自动关闭）
+- **传感器开关**：生成 FIT 时可按需开启/关闭心率、功率、步频、步态数据（前端在健走模式下会自动关闭心率）
 - **批量导出**：支持一次导出多份 FIT 文件
 - **坐标系统转换**：自动处理 GCJ-02、BD-09、WGS-84 坐标系统
 - **URL 路线分享**：路线编码到 URL hash，支持一键分享（Polyline 算法压缩）
@@ -146,7 +146,7 @@ TS-Hono 支持两种 Cloudflare 部署：**Workers** 和 **Pages**。
 - **概览**：摘要卡片、文件头、设备信息、圈数、会话、解码错误列表
 - **表格**：每种消息类型可排序、可折叠，支持导出 CSV（单表或全部）
 - **图表**：心率/功率/踏频/速度/海拔等指标，支持悬停、框选缩放、Shift 拖拽平移
-- **地图**：GPS 轨迹 + 圈速标记 + 起终点（Leaflet，大文件自动降采样）
+- **地图**：GPS 轨迹 + 圈速标记 + 起终点（Leaflet，大文件自动降采样）；地图源与主项目统一（高德/腾讯/百度/OSM/ArcGIS/天地图等），自动做 WGS84→GCJ02/BD09 坐标转换，避免国内瓦片源错位
 - **导出**：CSV / GPX / TCX / JSON
 - **修复**：从部分损坏的 FIT 文件中恢复消息并重新编码，下载可上传的修复副本
 
@@ -223,7 +223,7 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 | `opentopodata-eudem25m` | OpenTopoData `eudem25m` 数据集 |
 | `open-meteo` | Open-Meteo 海拔服务 |
 
-任一真实服务请求失败时自动回退本地模拟海拔；重复坐标点自动去重，并发请求加速。
+任一真实服务请求失败时自动回退本地模拟海拔；各真实源均先按坐标去重，并以受限并发（默认 8）分批请求加速。
 
 ---
 
@@ -376,22 +376,22 @@ TS-Hono/
 | ---- | ---- | ---- |
 | `startTime` | 是 | ISO 时间戳，运动开始时间 |
 | `points` | 是 | 轨迹点（2~10000 个），纬度 -90~90，经度 -180~180 |
-| `paceSecondsPerKm` | 否 | 目标配速（秒/公里），默认 360；健走默认 720 |
-| `hrRest` / `hrMax` | 否 | 静息/最大心率，默认 60 / 180 |
-| `lapCount` | 否 | 圈数（支持小数），默认 1，路线自动闭合 |
+| `paceSecondsPerKm` | 否 | 目标配速（秒/公里），默认 360；健走默认 720。有效值 1~1999，超出回退默认 |
+| `hrRest` / `hrMax` | 否 | 静息/最大心率，默认 60 / 180；`hrRest` clamp 到 30~120，`hrMax` clamp 到 100~220 |
+| `lapCount` | 否 | 圈数（支持小数），默认 1，路线自动闭合；展开后的轨迹点上限 50000，超限返回 400 |
 | `variantIndex` | 否 | 变体序号，默认 1 |
-| `weightKg` | 否 | 体重，默认 65 |
-| `powerFactor` | 否 | 功率因数，默认 1.3 |
-| `gpsDrift` | 否 | GPS 漂移幅度，默认 0 |
+| `weightKg` | 否 | 体重（30~150kg，含边界），默认 65 |
+| `powerFactor` | 否 | 功率因数，默认 1.3，上限 10（超出 clamp） |
+| `gpsDrift` | 否 | GPS 漂移幅度，后端默认 0（前端界面默认 0.1） |
 | `avgCadence` | 否 | 目标平均步频，默认 170 |
 | `elevationSource` | 否 | 海拔来源：`none` / `off` / `open-elevation` / `opentopodata` / `opentopodata-srtm30m` / `opentopodata-aster30m` / `opentopodata-eudem25m` / `open-meteo` |
 | `includeHeartRate` / `includePower` / `includeCadence` / `includeGaitData` | 否 | 传感器开关 |
 | `sportType` | 否 | 运动类型：`running`（默认）/ `walking` |
-| `sportName` | 否 | 运动名称（如"跑步"、"户外跑步"），写入 FIT `sport` 名称字段 |
+| `sportName` | 否 | 运动名称（如"跑步"、"户外跑步"），用于预览回显与前端文件名前缀 |
 | `fitSubSport` | 否 | FIT 子运动：`generic` / `treadmill` / `street` / `trail` / `track` / `indoorRunning` / `obstacle` / `virtualActivity` / `casualWalking` / `indoorWalking` |
 | `customSubSport` | 否 | 自定义子运动数值 0-255，优先级高于 `fitSubSport`（默认 0 表示按 `fitSubSport` 映射） |
 | `deviceType` | 否 | 设备品牌：`garmin` / `coros` / `polar` / `suunto` / `wahoo`（官方值）、`huawei` / `xiaomi` / `amazfit`（社区保留值，可能无法识别）、`development`（255），或直接填数字 manufacturer_id（0-65535，优先级最高） |
-| `heightCm` | 否 | 身高，默认 175，用于步幅/步态计算 |
+| `heightCm` | 否 | 身高（预留字段，当前未参与计算）；前端默认 170 |
 | `workoutMode` | 否 | 训练模式：`steady`（默认）/ `negative_split` / `interval` / `lsd` |
 | `intervalReps` | 否 | 间歇跑组数（`workoutMode=interval` 时生效），默认 4 |
 | `intervalFastKm` | 否 | 间歇跑快跑段距离（公里），默认 0.4 |
@@ -433,7 +433,7 @@ TS-Hono/
 | `fit` | `application/vnd.ant.fit` | `run_{variantIndex}.fit` / `walk_{variantIndex}.fit` |
 | `tcx` | `application/gpx+xml` | `run_{variantIndex}.tcx` |
 | `gpx` | `application/gpx+xml` | `run_{variantIndex}.gpx` |
-| `csv` | `text/csv` | `run_{variantIndex}.csv` |
+| `csv` | `text/csv; charset=utf-8` | `run_{variantIndex}.csv` |
 
 响应头 `X-Elevation-Source` / `X-Elevation-Status` 标注本次海拔来源与状态。
 

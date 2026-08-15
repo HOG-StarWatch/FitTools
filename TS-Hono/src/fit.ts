@@ -212,6 +212,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
   record: {
     0: { size: 4, baseType: FIT_TYPES.sint32.baseType },   // position_lat (semicircles)
     1: { size: 4, baseType: FIT_TYPES.sint32.baseType },   // position_long (semicircles)
+    2: { size: 2, baseType: FIT_TYPES.uint16.baseType },   // altitude (scale 5, offset 500)
     3: { size: 1, baseType: FIT_TYPES.uint8.baseType },    // heart_rate
     4: { size: 1, baseType: FIT_TYPES.uint8.baseType },    // cadence
     5: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // distance
@@ -221,7 +222,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     40: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // stance_time_percent
     41: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // stance_time
     73: { size: 4, baseType: FIT_TYPES.uint32.baseType },  // enhanced_speed
-    78: { size: 4, baseType: FIT_TYPES.sint32.baseType },  // altitude (scale 5, offset 500)
+    78: { size: 4, baseType: FIT_TYPES.uint32.baseType },  // enhanced_altitude (scale 5, offset 500)
     85: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // step_length
   },
 };
@@ -408,13 +409,18 @@ export class FitEncoder {
       fields.push({ num: 40, value: Math.round(data.stanceTimePercent * 100) });
     }
     if (data.verticalOscillation !== undefined) {
-      fields.push({ num: 39, value: Math.round(data.verticalOscillation * 10) });
+      // lib.ts 已返回 FIT 原始值（cm × 10）
+      fields.push({ num: 39, value: Math.round(data.verticalOscillation) });
     }
     if (data.stepLength !== undefined) {
-      fields.push({ num: 85, value: Math.round(data.stepLength * 1000) });
+      // lib.ts 已返回 FIT 原始值（m × 10）
+      fields.push({ num: 85, value: Math.round(data.stepLength) });
     }
     if (data.altitude !== undefined) {
-      fields.push({ num: 78, value: Math.round((data.altitude + 500) * 5) });
+      // 同时写入标准 altitude (uint16) 与 enhanced_altitude (uint32)，兼容新老设备/平台
+      const altitudeValue = Math.round((data.altitude + 500) * 5);
+      fields.push({ num: 2, value: altitudeValue });
+      fields.push({ num: 78, value: altitudeValue });
     }
 
     const mesgNum = MESG_NUM['record'];

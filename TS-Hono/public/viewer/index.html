@@ -112,10 +112,33 @@
       <div class="tab-body" id="tab-map" hidden>
         <div class="map-toolbar">
           <label>地图源 <select id="map-source">
-            <option value="osm">OpenStreetMap</option>
-            <option value="gaode">高德地图</option>
-            <option value="tencent">腾讯地图</option>
-            <option value="carto-dark">Carto 暗色</option>
+            <optgroup label="国内免费无鉴权">
+              <option value="gaode_vec" selected>高德地图 矢量</option>
+              <option value="gaode_img">高德地图 影像</option>
+              <option value="gaode_rel">高德地图 路网</option>
+              <option value="tencent_vec">腾讯地图 矢量</option>
+              <option value="tencent_sat">腾讯地图 影像</option>
+              <option value="baidu_vec">百度地图 矢量</option>
+              <option value="baidu_img">百度地图 影像</option>
+              <option value="osm_cn">OSM 国内节点</option>
+            </optgroup>
+            <optgroup label="国际免费无鉴权">
+              <option value="osm">OpenStreetMap</option>
+              <option value="arcgis_street">ArcGIS 街道图</option>
+              <option value="arcgis_satellite">ArcGIS 卫星图</option>
+              <option value="cartodb">CartoDB 浅色</option>
+              <option value="cartodb_dark">CartoDB 深色</option>
+              <option value="osmde">OSM 德国节点</option>
+              <option value="osmfr">OSM 法国节点</option>
+              <option value="cyclOSM">CyclOSM 骑行图</option>
+              <option value="wikimedia">Wikimedia</option>
+              <option value="stamen_water">Stamen 水彩</option>
+              <option value="stamen_terrain">Stamen 地形</option>
+            </optgroup>
+            <optgroup label="需 Key（内置默认 Key）">
+              <option value="tianditu">天地图 矢量</option>
+              <option value="satellite">天地图 卫星</option>
+            </optgroup>
           </select></label>
           <button class="btn" id="btn-gpx-download">下载轨迹为 GPX</button>
           <span class="map-hint" id="map-hint"></span>
@@ -158,6 +181,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/common.js"></script>
+  <script src="js/coords.js"></script>
   <script src="js/exporters.js"></script>
   <script src="js/repair.js"></script>
   <script src="js/views.js"></script>

@@ -1,4 +1,4 @@
-import { processRouteRequest, generateFitFile, applySensorOptions } from './lib';
+import { processRouteRequest, generateFitFile } from './lib';
 import type { RequestBody } from './lib';
 import { fetchAltitudesOrNull, DEFAULT_ELEVATION_CONFIG, parseElevationSource } from './elevation';
 import { exportActivityFile } from './exporters';
@@ -88,16 +88,23 @@ export async function handlePreview(body: RequestBody): Promise<Response> {
       elevationConfigFor(body.elevationSource)
     );
 
-    let samples = result.samples;
-    if (elevation.altitudes) {
-      samples = samples.map((s, i) => ({ ...s, altitude: elevation.altitudes![i] }));
-    }
-    samples = applySensorOptions(samples, {
-      includeHeartRate: body.includeHeartRate,
-      includePower: body.includePower,
-      includeCadence: body.includeCadence,
-      includeGaitData: body.includeGaitData,
-    });
+    const altitudes = elevation.altitudes;
+    const includeHeartRate = body.includeHeartRate !== false;
+    const includePower = body.includePower !== false;
+    const includeCadence = body.includeCadence !== false;
+    const includeGaitData = body.includeGaitData !== false;
+
+    // 单次遍历完成真实海拔替换与传感器开关清零，避免重复复制大数组
+    const samples = result.samples.map((s, i) => ({
+      ...s,
+      altitude: altitudes ? altitudes[i] : s.altitude,
+      heartRate: includeHeartRate ? s.heartRate : 0,
+      power: includePower ? s.power : 0,
+      cadence: includeCadence ? s.cadence : 0,
+      groundTime: includeGaitData ? s.groundTime : 0,
+      flightTime: includeGaitData ? s.flightTime : 0,
+      verticalOscillation: includeGaitData ? s.verticalOscillation : 0,
+    }));
 
     const stats = statsFromSamples(samples, result.hrRestVal, result.hrMaxVal, result.totalDurationSec);
 
