@@ -3,7 +3,8 @@ compatibility_date = "2024-01-01"
 main = "src/workers.ts"
 
 [vars]
-ALLOWED_ORIGINS = "*"
+# 生产环境请设置为实际域名，例如 "https://your-domain.com"；留空则仅同源可用
+ALLOWED_ORIGINS = ""
 
 [assets]
 directory = "./public"

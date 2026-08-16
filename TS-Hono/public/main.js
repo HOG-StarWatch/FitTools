@@ -59,12 +59,18 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function safeUrl(url) {
+  const trimmed = String(url).trim();
+  if (/^(https?:\/\/|mailto:|#|\.{1,2}\/|\/)/i.test(trimmed)) return trimmed;
+  return '#';
+}
+
 function inlineMd(raw) {
   return escapeHtml(raw)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, url) => `<a href="${safeUrl(url)}" target="_blank" rel="noopener">${text}</a>`);
 }
 
 function renderSimpleMarkdown(text) {
@@ -340,7 +346,7 @@ const CoordSys = {
 
 const MAP_SOURCE_CONFIG = {
   wgs84: ['osm', 'osmde', 'osmfr', 'osm_cn', 'cyclOSM', 'wikimedia', 'arcgis_street', 'arcgis_satellite', 'esri_satellite', 'cartodb', 'cartodb_dark', 'stamen_water', 'stamen_terrain'],
-  gcj02: ['gaode_vec', 'gaode_img', 'gaode_rel', 'tencent_vec', 'tencent_sat', 'tianditu_vec', 'tianditu_cva', 'tianditu_img'],
+  gcj02: ['gaode_vec', 'gaode_img', 'gaode_rel', 'tencent_vec', 'tencent_sat', 'tianditu', 'satellite'],
   bd09: ['baidu_vec', 'baidu_img']
 };
 
@@ -487,9 +493,6 @@ const mapSources = {
   wikimedia: L.tileLayer("https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png", { subdomains: ['a', 'b', 'c'], maxZoom: 19, attribution: '&copy; Wikimedia' }),
   osm: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { subdomains: ['a', 'b', 'c'], maxZoom: 19, attribution: '&copy; OpenStreetMap' }),
   esri_satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri' }),
-  tianditu_vec: L.tileLayer('https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' + DEFAULT_TIANDITU_KEY, { subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'], minZoom: 5, maxZoom: 20, maxNativeZoom: 18, attribution: '&copy; 天地图' }),
-  tianditu_cva: L.tileLayer('https://t{s}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' + DEFAULT_TIANDITU_KEY, { subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'], minZoom: 5, maxZoom: 20, maxNativeZoom: 17 }),
-  tianditu_img: L.tileLayer('https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' + DEFAULT_TIANDITU_KEY, { subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'], minZoom: 5, maxZoom: 20, maxNativeZoom: 18, attribution: '&copy; 天地图' }),
   gaode_vec: L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', { subdomains: ['1', '2', '3', '4'], maxZoom: 19, attribution: '&copy; 高德地图' }),
   gaode_img: L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}', { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '&copy; 高德地图' }),
   gaode_rel: L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=10&x={x}&y={y}&z={z}', { subdomains: ['1', '2', '3', '4'], maxZoom: 16, attribution: '&copy; 高德地图' }),
@@ -510,7 +513,8 @@ const map = L.map("map", {
   zoomControl: true,
   dragging: true,
   tap: true,
-  touchZoom: true
+  touchZoom: true,
+  doubleClickZoom: false
 }).setView([39.9042, 116.4074], 13);
 
 activeBaseLayer = mapSources.gaode_vec;
@@ -622,6 +626,17 @@ function refreshRouteDisplay() {
     polyline.setLatLngs(displayPoints);
   }
 
+  if (smoothedPoints && smoothedPoints.length >= 2) {
+    const smoothDisplayPoints = CoordManager.toMapDisplayArray(smoothedPoints);
+    if (smoothPolyline) smoothPolyline.setLatLngs(smoothDisplayPoints);
+    else smoothPolyline = L.polyline(smoothDisplayPoints, {
+      color: '#3b82f6',
+      weight: 3,
+      opacity: 0.7,
+      dashArray: '8, 4'
+    }).addTo(map);
+  }
+
   if (routeEditor.active) {
     routeEditor.renderMarkers();
   }
@@ -631,7 +646,14 @@ function refreshRouteDisplay() {
   }
 }
 
-document.getElementById('mapSourceSelect')?.addEventListener('change', function() { switchMapSource(this.value); });
+document.getElementById('mapSourceSelect')?.addEventListener('change', function() {
+  if (this.value === 'baidu_vec' || this.value === 'baidu_img') {
+    updateMessage('百度瓦片使用 BD09MC 投影，与 XYZ 切片不兼容，已取消切换', true);
+    this.value = this.dataset.prev || 'gaode_vec';
+    return;
+  }
+  switchMapSource(this.value);
+});
 document.getElementById('tiandituKeyInput')?.addEventListener('input', function() {
   const select = document.getElementById('mapSourceSelect');
   if (select && (select.value === 'tianditu' || select.value === 'satellite')) switchMapSource(select.value);
@@ -733,6 +755,10 @@ function switchDrawMode(mode) {
     if (shapePanel) shapePanel.style.display = 'block';
     routeEditor.disable();
   } else if (mode === 'edit') {
+    if (routePoints.length < 2) {
+      updateMessage('请先绘制至少2个轨迹点，再进入编辑模式', true);
+      return;
+    }
     currentDrawMode = 'free';
     isEditMode = true;
     if (editBtn) editBtn.classList.add('active');
@@ -782,8 +808,9 @@ if (rotationSlider && rotationInput) {
   });
   rotationInput.addEventListener('input', () => {
     let value = parseInt(rotationInput.value) || 0;
-    rotationSlider.value = Math.max(0, Math.min(360, value));
-    if (shapeManipulator?.isActive()) shapeManipulator.setRotation(rotationSlider.value);
+    value = Math.max(0, Math.min(360, value));
+    rotationSlider.value = value;
+    if (shapeManipulator?.isActive()) shapeManipulator.setRotation(value);
   });
 }
 
@@ -921,12 +948,12 @@ class ShapeManipulator {
     this.currentRotation = rotation;
     this.currentOffset = { lat: offsetLat, lng: offsetLng };
     this.shapeType = shapeType;
-    // center 是 WGS84 坐标，需要转换为当前地图坐标系用于生成形状
-    const mapCenter = CoordManager.fromWGS84Point(center.lng, center.lat);
-    this.mapCenter = mapCenter;
+    // mapCenter 统一存 WGS84，重绘/拖拽时再转当前显示坐标系，避免跨坐标系切换后跳变
+    this.mapCenter = { lat: center.lat, lng: center.lng };
+    const displayCenter = CoordManager.fromWGS84Point(this.mapCenter.lng, this.mapCenter.lat);
 
     // generateShape 生成的是地图坐标系的点
-    const points = this.generateShape(mapCenter, shapeType, rotation, offsetLat, offsetLng);
+    const points = this.generateShape(displayCenter, shapeType, rotation, offsetLat, offsetLng);
     
     // 将生成的点转换为 WGS84 保存到 routePoints
     routePoints = CoordManager.toWGS84Array(points);
@@ -960,15 +987,9 @@ class ShapeManipulator {
     this.moveMarker.on('drag', (e) => {
       if (!this.isDraggingMove) return;
       const newCenter = e.target.getLatLng();
-      // 计算偏移量（地图坐标系）
-      const dx = newCenter.lng - this.dragStartShapeCenter.lng;
-      const dy = newCenter.lat - this.dragStartShapeCenter.lat;
-      this.currentOffset.lat = this.dragStartOffset.lat + dy;
-      this.currentOffset.lng = this.dragStartOffset.lng + dx;
-      if (offsetLatInput) offsetLatInput.value = this.currentOffset.lat.toFixed(6);
-      if (offsetLngInput) offsetLngInput.value = this.currentOffset.lng.toFixed(6);
-      // 更新 mapCenter 为新的地图坐标系中心点
-      this.mapCenter = { lat: newCenter.lat, lng: newCenter.lng };
+      // 仅更新中心点，currentOffset 保持用户设置的偏移，避免双倍偏移；
+      // 拖拽回调拿到的是显示坐标，统一转 WGS84 存储
+      this.mapCenter = CoordManager.toWGS84Point(newCenter.lng, newCenter.lat);
       this.redraw();
     });
     
@@ -1037,8 +1058,9 @@ class ShapeManipulator {
 
   redraw() {
     if (!this.active || !this.mapCenter) return;
-    // generateShape 生成的是基于地图坐标系的点
-    const points = this.generateShape(this.mapCenter, this.shapeType, this.currentRotation, this.currentOffset.lat, this.currentOffset.lng);
+    // mapCenter 存的是 WGS84，生成前先转当前显示坐标系
+    const displayCenter = CoordManager.fromWGS84Point(this.mapCenter.lng, this.mapCenter.lat);
+    const points = this.generateShape(displayCenter, this.shapeType, this.currentRotation, this.currentOffset.lat, this.currentOffset.lng);
 
     // 将生成的点（当前地图坐标系）转换为 WGS84 保存
     routePoints = CoordManager.toWGS84Array(points);
@@ -1060,13 +1082,6 @@ class ShapeManipulator {
     updateRouteHash();
   }
 
-  /**
-   * 更新 mapCenter 为新的地图坐标系中心点
-   */
-  updateMapCenter(newMapCenter) {
-    this.mapCenter = newMapCenter;
-  }
-
   updateRoutePoints() {
     if (!this.active || !this.polyline) return;
     // 从 polyline 获取的是当前地图坐标系的点，需要转换为 WGS84
@@ -1086,8 +1101,8 @@ document.getElementById('generateShapeBtn')?.addEventListener('click', () => {
   const offsetLat = parseFloat(document.getElementById('offsetLatInput')?.value) || 0;
   const offsetLng = parseFloat(document.getElementById('offsetLngInput')?.value) || 0;
   
-  shapeManipulator.activate(center, shapeType, rotation, offsetLat, offsetLng);
   pushHistory();
+  shapeManipulator.activate(center, shapeType, rotation, offsetLat, offsetLng);
   updateMessage(`已生成${shapeType}跑道，拖动中心点可移动`);
   updateDistanceInfo();
   updateRouteStatus();
@@ -1104,6 +1119,10 @@ class RouteEditor {
   enable() {
     if (routePoints.length < 2) {
       updateMessage('请先绘制至少2个轨迹点', true);
+      return;
+    }
+    if (routePoints.length > 500) {
+      updateMessage('轨迹点超过 500 个，暂不支持逐点编辑，请先平滑或简化路线', true);
       return;
     }
     this.active = true;
@@ -1128,6 +1147,9 @@ class RouteEditor {
         const newLatLng = marker.getLatLng();
         const wgsPoint = CoordManager.toWGS84Point(newLatLng.lng, newLatLng.lat);
         routePoints[index] = wgsPoint;
+        // 编辑拖拽会使平滑预览失效
+        smoothedPoints = null;
+        if (smoothPolyline) { map.removeLayer(smoothPolyline); smoothPolyline = null; }
         const displayPoints = CoordManager.toMapDisplayArray(routePoints);
         if (polyline) polyline.setLatLngs(displayPoints);
         updateDistanceInfo();
@@ -1250,26 +1272,31 @@ function simplifyRoute(points, tolerance = 0.00001) {
     return Math.sqrt((p.lng - nearX) ** 2 + (p.lat - nearY) ** 2);
   };
 
-  const DouglasPeucker = (pts, tol) => {
-    if (pts.length <= 2) return pts;
-    let maxDist = 0, maxIndex = 0;
-    const end = pts.length - 1;
-    const p1 = pts[0], p2 = pts[end];
+  // 迭代版 Douglas-Peucker，避免大路线递归栈溢出
+  const pts = [...points];
+  const keep = new Array(pts.length).fill(false);
+  keep[0] = keep[pts.length - 1] = true;
+  const stack = [[0, pts.length - 1]];
 
-    for (let i = 1; i < end; i++) {
+  while (stack.length > 0) {
+    const [start, end] = stack.pop();
+    if (end - start <= 1) continue;
+    let maxDist = 0;
+    let maxIndex = -1;
+    const p1 = pts[start];
+    const p2 = pts[end];
+    for (let i = start + 1; i < end; i++) {
       const dist = perpendicularDistance(pts[i], p1, p2);
       if (dist > maxDist) { maxDist = dist; maxIndex = i; }
     }
-
-    if (maxDist > tol) {
-      const left = DouglasPeucker(pts.slice(0, maxIndex + 1), tol);
-      const right = DouglasPeucker(pts.slice(maxIndex), tol);
-      return left.slice(0, -1).concat(right);
+    if (maxDist > tolerance && maxIndex !== -1) {
+      keep[maxIndex] = true;
+      stack.push([start, maxIndex]);
+      stack.push([maxIndex, end]);
     }
-    return [p1, p2];
-  };
+  }
 
-  return DouglasPeucker([...points], tolerance);
+  return pts.filter((_, i) => keep[i]);
 }
 
 function getActivePoints() {
@@ -1361,6 +1388,29 @@ function undo() {
 
 // ==================== 路径保存加载模块 ====================
 
+function safeJSONParse(text, fallback) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function safeLocalStorageSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.warn('localStorage 写入失败：', e);
+    return false;
+  }
+}
+
+function loadSavedRoutes() {
+  const routes = safeJSONParse(localStorage.getItem('savedRoutes') || '{}', {});
+  return routes && typeof routes === 'object' && !Array.isArray(routes) ? routes : {};
+}
+
 function saveRoute() {
   if (routePoints.length < 2) {
     updateMessage('请先绘制或生成路径', true);
@@ -1370,18 +1420,21 @@ function saveRoute() {
   const routeName = prompt('请输入路径名称：', `路径_${new Date().toLocaleDateString().replace(/\//g, '-')}`);
   if (!routeName) return;
   
-  const routes = JSON.parse(localStorage.getItem('savedRoutes') || '{}');
+  const routes = loadSavedRoutes();
   routes[routeName] = { points: routePoints, savedAt: new Date().toISOString() };
-  localStorage.setItem('savedRoutes', JSON.stringify(routes));
+  if (!safeLocalStorageSetItem('savedRoutes', JSON.stringify(routes))) {
+    updateMessage('保存失败：浏览器存储空间不足，请删除部分已存路径', true);
+    return;
+  }
   
   updateMessage(`路径 "${routeName}" 已保存`);
   updateSavedRoutesList();
 }
 
 function loadRoute(routeName) {
-  const routes = JSON.parse(localStorage.getItem('savedRoutes') || '{}');
-  if (!routes[routeName]) {
-    updateMessage('路径不存在', true);
+  const routes = loadSavedRoutes();
+  if (!routes[routeName] || !isValidRoutePoints(routes[routeName].points)) {
+    updateMessage('路径不存在或数据已损坏', true);
     return;
   }
 
@@ -1410,9 +1463,12 @@ function loadRoute(routeName) {
 function deleteRoute(routeName) {
   if (!confirm(`确定要删除路径 "${routeName}" 吗？`)) return;
   
-  const routes = JSON.parse(localStorage.getItem('savedRoutes') || '{}');
+  const routes = loadSavedRoutes();
   delete routes[routeName];
-  localStorage.setItem('savedRoutes', JSON.stringify(routes));
+  if (!safeLocalStorageSetItem('savedRoutes', JSON.stringify(routes))) {
+    updateMessage('删除失败：浏览器存储写入失败', true);
+    return;
+  }
   
   updateMessage(`路径 "${routeName}" 已删除`);
   updateSavedRoutesList();
@@ -1422,7 +1478,7 @@ function updateSavedRoutesList() {
   const container = document.getElementById('savedRoutesList');
   if (!container) return;
   
-  const routes = JSON.parse(localStorage.getItem('savedRoutes') || '{}');
+  const routes = loadSavedRoutes();
   const routeNames = Object.keys(routes);
   
   if (routeNames.length === 0) {
@@ -1551,6 +1607,10 @@ map.on("click", (e) => {
 
   if (routePoints.length > 0) pushHistory();
 
+  // 地图点击加点会使平滑预览失效
+  smoothedPoints = null;
+  if (smoothPolyline) { map.removeLayer(smoothPolyline); smoothPolyline = null; }
+
   // 将地图点击坐标（当前地图坐标系）转换为 WGS84 保存
   const wgsPoint = CoordManager.parseMapClick(e.latlng.lat, e.latlng.lng);
   routePoints.push(wgsPoint);
@@ -1577,21 +1637,6 @@ function updateRouteStatus() {
     : `路线状态：未闭合（${routePoints.length}个点）`;
 }
 
-function undoLastPoint() {
-  if (routePoints.length > 0) {
-    pushHistory();
-    routePoints.pop();
-    if (polyline) {
-      if (routePoints.length < 2) { map.removeLayer(polyline); polyline = null; }
-      else polyline.setLatLngs(CoordManager.toMapDisplayArray(routePoints));
-    }
-    updateMessage(`已撤销最后一个点，当前 ${routePoints.length} 个点`);
-    updateDistanceInfo();
-    updateRouteStatus();
-    updateRouteHash();
-  }
-}
-
 function clearRoute() {
   if (routePoints.length === 0) return;
   if (!confirm('确定要清空当前路线吗？')) return;
@@ -1602,8 +1647,7 @@ function clearRoute() {
   if (polyline) { map.removeLayer(polyline); polyline = null; }
   shapeManipulator.deactivate();
   routeEditor.disable();
-  historyStack = [];
-  updateMessage("轨迹已清空");
+  updateMessage("轨迹已清空，可点击撤销恢复");
   updateDistanceInfo();
   updateRouteStatus();
   updateRouteHash();
@@ -1710,8 +1754,18 @@ function updateRouteHash() {
   if (routePoints.length > 0) {
     history.replaceState(null, '', '#' + encodePolyline(routePoints));
   } else if (window.location.hash) {
-    history.replaceState(null, '', window.location.pathname);
+    history.replaceState(null, '', window.location.pathname + window.location.search);
   }
+}
+
+function isValidRoutePoints(points) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  for (const p of points) {
+    if (!p || typeof p !== 'object') return false;
+    if (typeof p.lat !== 'number' || !Number.isFinite(p.lat) || p.lat < -90 || p.lat > 90) return false;
+    if (typeof p.lng !== 'number' || !Number.isFinite(p.lng) || p.lng < -180 || p.lng > 180) return false;
+  }
+  return true;
 }
 
 function loadRouteFromHash() {
@@ -1724,7 +1778,7 @@ function loadRouteFromHash() {
     } else {
       points = JSON.parse(atob(hash));
     }
-    if (Array.isArray(points) && points.length >= 2) {
+    if (isValidRoutePoints(points)) {
       routePoints = points;
       smoothedPoints = null;
       if (smoothPolyline) { map.removeLayer(smoothPolyline); smoothPolyline = null; }
@@ -1810,6 +1864,10 @@ function calculateLapsByDistance() {
   
   if (isNaN(targetDistance) || targetDistance <= 0) {
     updateMessage("请输入有效的目标距离", true);
+    return;
+  }
+  if (!Number.isFinite(baseKm) || baseKm <= 0) {
+    updateMessage("当前路线距离为 0，无法计算圈数", true);
     return;
   }
   
@@ -2118,8 +2176,14 @@ async function generateFit() {
   let lastError = '';
   let lastElevationInfo = null;
   const fitBlobs = [];
+  const activePoints = getActivePoints();
+  const elevationSource = document.getElementById("elevationSourceSelect")?.value || 'open-elevation';
   
   try {
+    showGeneratingModal(`正在获取海拔（${elevationSource}）...`);
+    const elevation = await fetchAltitudesClient(activePoints, elevationSource);
+    lastElevationInfo = elevation;
+    
     for (let i = 0; i < exportCount; i++) {
       updateGeneratingModal(`正在生成第 ${i + 1}/${exportCount} 个 ${fileExt.toUpperCase()} 文件...`);
       
@@ -2145,7 +2209,6 @@ async function generateFit() {
       const powerFactor = parseFloat(document.getElementById("powerFactor")?.value) || 1.3;
       const gpsDrift = parseFloat(document.getElementById("gpsDrift")?.value) || 0;
       const avgCadence = parseInt(document.getElementById("avgCadence")?.value) || (walking ? 100 : 170);
-      const elevationSource = document.getElementById("elevationSourceSelect")?.value || 'open-elevation';
       const includeHeartRate = (walking ? false : document.getElementById("includeHeartRate")?.checked) ?? true;
       const includePower = document.getElementById("includePower")?.checked ?? true;
       const includeCadence = document.getElementById("includeCadence")?.checked ?? true;
@@ -2157,11 +2220,12 @@ async function generateFit() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             startTime,
-            points: getActivePoints(),
+            points: activePoints,
             paceSecondsPerKm: filePaceSecondsPerKm,
             hrRest, hrMax, lapCount, variantIndex: i + 1,
             weightKg, powerFactor, gpsDrift, avgCadence,
             elevationSource,
+            altitudes: elevation.altitudes,
             includeHeartRate, includePower, includeCadence, includeGaitData,
             sportType: shared.sportType,
             heightCm: shared.heightCm,
@@ -2187,10 +2251,6 @@ async function generateFit() {
         const blob = await res.blob();
         fitBlobs.push({ blob, name: `${filePrefix}_${i + 1}.${fileExt}` });
         successCount++;
-        lastElevationInfo = {
-          source: res.headers.get('x-elevation-source'),
-          status: res.headers.get('x-elevation-status')
-        };
       } catch (e) {
         failCount++;
         lastError = `第 ${i + 1} 份请求异常: ${e.message}`;
@@ -2244,6 +2304,13 @@ async function generateFit() {
     } else {
       scheduleGeneratingClose(3);
     }
+  } catch (e) {
+    console.error(e);
+    const msg = e?.message || e;
+    updateGeneratingModal(`生成失败：${msg}`, msg);
+    updateMessage(`生成失败：${msg}`, true);
+    setElevationStatus(lastElevationInfo);
+    scheduleGeneratingClose(3);
   } finally {
     isGenerating = false;
     document.getElementById("generateFit").disabled = false;
@@ -2273,7 +2340,7 @@ function renderPreviewStats(preview) {
   let sumHr = 0, sumCadence = 0, sumPower = 0;
   let sumGround = 0, sumFlight = 0, sumVert = 0, sumSpeed = 0;
   let hrCount = 0, cadCount = 0, powerCount = 0;
-  let groundCount = 0, flightCount = 0, vertCount = 0;
+  let groundCount = 0, flightCount = 0, vertCount = 0, speedCount = 0;
   let sumAltitude = 0, altCount = 0, totalAscent = 0, totalDescent = 0;
   let maxAlt = -Infinity, minAlt = Infinity;
 
@@ -2284,7 +2351,7 @@ function renderPreviewStats(preview) {
     if (s.groundTime) { sumGround += s.groundTime; groundCount++; }
     if (s.flightTime) { sumFlight += s.flightTime; flightCount++; }
     if (s.verticalOscillation) { sumVert += s.verticalOscillation; vertCount++; }
-    if (s.speed) sumSpeed += s.speed;
+    if (s.speed) { sumSpeed += s.speed; speedCount++; }
     if (typeof s.altitude === 'number') {
       sumAltitude += s.altitude; altCount++;
       if (s.altitude > maxAlt) maxAlt = s.altitude;
@@ -2293,15 +2360,19 @@ function renderPreviewStats(preview) {
   }
 
   for (let i = 1; i < samples.length; i++) {
-    const diff = samples[i].altitude - samples[i - 1].altitude;
+    const a = samples[i].altitude;
+    const b = samples[i - 1].altitude;
+    if (typeof a !== 'number' || typeof b !== 'number') continue;
+    const diff = a - b;
     if (diff > 0) totalAscent += diff;
     else totalDescent += Math.abs(diff);
   }
 
-  const avgSpeed = sumSpeed / n;
+  const avgSpeed = speedCount ? sumSpeed / speedCount : 0;
   const avgPaceSecPerKm = avgSpeed > 0 ? 1000 / avgSpeed : 0;
-  const paceMin = Math.floor(avgPaceSecPerKm / 60);
-  const paceSec = Math.round(avgPaceSecPerKm % 60);
+  const roundedPace = Math.round(avgPaceSecPerKm);
+  const paceMin = Math.floor(roundedPace / 60);
+  const paceSec = roundedPace % 60;
 
   const avgHr = hrCount ? Math.round(sumHr / hrCount) : 0;
   const avgCadence = cadCount ? Math.round(sumCadence / cadCount) : 0;
@@ -2309,8 +2380,9 @@ function renderPreviewStats(preview) {
 
   const avgGround = groundCount ? Math.round(sumGround / groundCount) : 0;
   const avgFlight = flightCount ? Math.round(sumFlight / flightCount) : 0;
-  const avgVertMm = vertCount ? (sumVert / vertCount) : 0;
-  const avgVertCm = (avgVertMm / 10).toFixed(1);
+  // verticalOscillation 服务端返回 FIT 原始值（mm × 10 = cm × 100），显示为 cm
+  const avgVertRaw = vertCount ? (sumVert / vertCount) : 0;
+  const avgVertCm = (avgVertRaw / 100).toFixed(1);
 
   const avgStride = (avgCadence > 0 && avgSpeed > 0)
     ? ((avgSpeed * 60) / avgCadence).toFixed(2) : '-';
@@ -2341,7 +2413,7 @@ function renderPreviewStats(preview) {
   setText('statStride', avgStride !== '-' ? `${avgStride} m` : '—');
   setText('statGroundTime', avgGround ? `${avgGround} ms` : '—');
   setText('statFlightTime', avgFlight ? `${avgFlight} ms` : '—');
-  setText('statVertOsc', avgVertMm ? `${avgVertCm} cm` : '—');
+  setText('statVertOsc', avgVertRaw ? `${avgVertCm} cm` : '—');
   setText('statLoad', load ? `${load}` : '—');
   setText('statAscent', altCount > 1 ? `${Math.round(totalAscent)} m` : '—');
   setText('statDescent', altCount > 1 ? `${Math.round(totalDescent)} m` : '—');
@@ -2376,6 +2448,366 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ==================== 浏览器端海拔获取 ====================
+const CLIENT_ELEVATION_SOURCE_NAMES = {
+  'open-elevation': 'Open-Elevation',
+  'opentopodata': 'OpenTopoData SRTM90',
+  'opentopodata-srtm30m': 'OpenTopoData SRTM30',
+  'opentopodata-aster30m': 'OpenTopoData ASTER30',
+  'opentopodata-eudem25m': 'OpenTopoData EUDEM25',
+  'open-meteo': 'Open-Meteo',
+};
+
+const CLIENT_OPENTOPO_DATASETS = {
+  'opentopodata': 'srtm90m',
+  'opentopodata-srtm30m': 'srtm30m',
+  'opentopodata-aster30m': 'aster30m',
+  'opentopodata-eudem25m': 'eudem25m',
+};
+
+function clientCorsProxy() {
+  const input = document.getElementById('corsProxyInput');
+  return input ? input.value.trim() : '';
+}
+
+function clientBuildProxyUrl(targetUrl) {
+  let proxy = clientCorsProxy();
+  if (!proxy) return targetUrl;
+  // 自动补协议，避免按相对路径解析到自身域名
+  if (!/^https?:\/\//i.test(proxy)) {
+    if (proxy.startsWith('//')) {
+      proxy = 'https:' + proxy;
+    } else if (/^(localhost|127\.0\.0\.1)([:/]|$)/i.test(proxy)) {
+      proxy = 'http://' + proxy;
+    } else {
+      proxy = 'https://' + proxy;
+    }
+  }
+  if (proxy.includes('{url}')) return proxy.replace('{url}', targetUrl);
+  return proxy + encodeURIComponent(targetUrl);
+}
+
+function syncElevationProxyUI() {
+  const select = document.getElementById('elevationSourceSelect');
+  const row = document.getElementById('elevationProxyRow');
+  if (!select || !row) return;
+  const value = select.value || 'open-elevation';
+  row.style.display = value.startsWith('opentopodata') ? 'block' : 'none';
+}
+
+function initCorsProxyInput() {
+  const input = document.getElementById('corsProxyInput');
+  if (!input) return;
+  const saved = localStorage.getItem('corsProxy') || '';
+  if (saved) input.value = saved;
+  input.addEventListener('input', () => {
+    localStorage.setItem('corsProxy', input.value.trim());
+  });
+}
+
+async function clientPostJson(url, body, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function clientGetJson(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function clientDedupePoints(points) {
+  const seen = new Map();
+  const firstIndexes = new Array(points.length);
+  const jobs = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+    const first = seen.get(key);
+    if (first === undefined) {
+      seen.set(key, i);
+      firstIndexes[i] = i;
+      jobs.push({ point: p, firstIndex: i });
+    } else {
+      firstIndexes[i] = first;
+    }
+  }
+  return { jobs, firstIndexes };
+}
+
+async function clientRunElevationBatches(jobs, batchSize, fetchBatch) {
+  const elevations = new Map();
+  const concurrency = 8;
+  for (let start = 0; start < jobs.length; start += batchSize * concurrency) {
+    const windowJobs = jobs.slice(start, start + batchSize * concurrency);
+    const batches = [];
+    for (let b = 0; b < windowJobs.length; b += batchSize) {
+      batches.push(windowJobs.slice(b, b + batchSize));
+    }
+
+    const settled = await Promise.allSettled(batches.map((batch) => fetchBatch(batch)));
+    const retryQueue = [];
+    settled.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        for (const item of result.value) {
+          elevations.set(item.firstIndex, item.elevation);
+        }
+      } else {
+        retryQueue.push({ batch: batches[idx], error: result.reason });
+      }
+    });
+
+    // 失败批次重试一次；仍失败则把该批次标记为 null，由调用方回退这些点的模拟海拔
+    if (retryQueue.length > 0) {
+      const retried = await Promise.allSettled(retryQueue.map(({ batch }) => fetchBatch(batch)));
+      retried.forEach((result, idx) => {
+        const { batch } = retryQueue[idx];
+        if (result.status === 'fulfilled') {
+          for (const item of result.value) {
+            elevations.set(item.firstIndex, item.elevation);
+          }
+        } else {
+          for (const job of batch) {
+            if (!elevations.has(job.firstIndex)) elevations.set(job.firstIndex, null);
+          }
+        }
+      });
+    }
+  }
+  return elevations;
+}
+
+async function clientFetchOpenElevation(points) {
+  const { jobs, firstIndexes } = clientDedupePoints(points);
+  const elevations = await clientRunElevationBatches(jobs, 200, async (batch) => {
+    const locations = batch.map(({ point: p }) => ({ latitude: p.lat, longitude: p.lng }));
+    const response = await clientPostJson('https://api.open-elevation.com/api/v1/lookup', { locations });
+    const results = response?.results;
+    if (!results || results.length !== batch.length) {
+      throw new Error('Open-Elevation 返回数量与请求数量不一致');
+    }
+    return batch.map((job, i) => ({
+      firstIndex: job.firstIndex,
+      elevation: results[i].elevation == null ? 0 : results[i].elevation,
+    }));
+  });
+  return points.map((_, i) => {
+    const value = elevations.get(firstIndexes[i]);
+    return value == null ? null : value;
+  });
+}
+
+async function clientFetchOpenTopoData(points, source) {
+  const dataset = CLIENT_OPENTOPO_DATASETS[source] || 'srtm90m';
+  const { jobs, firstIndexes } = clientDedupePoints(points);
+  const elevations = await clientRunElevationBatches(jobs, 100, async (batch) => {
+    const locationsStr = batch.map(({ point: p }) => `${p.lat},${p.lng}`).join('|');
+    const response = await clientPostJson(
+      clientBuildProxyUrl(`https://api.opentopodata.org/v1/${dataset}`),
+      { locations: locationsStr }
+    );
+    const results = response?.results;
+    if (!results || results.length !== batch.length) {
+      throw new Error('OpenTopoData 返回数量与请求数量不一致');
+    }
+    return batch.map((job, i) => ({
+      firstIndex: job.firstIndex,
+      elevation: results[i].elevation == null ? 0 : results[i].elevation,
+    }));
+  });
+  return points.map((_, i) => {
+    const value = elevations.get(firstIndexes[i]);
+    return value == null ? null : value;
+  });
+}
+
+async function clientFetchOpenMeteo(points) {
+  const altitudes = new Array(points.length).fill(null);
+  const seen = new Map();
+  const jobs = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+    if (seen.has(key)) continue;
+    seen.set(key, i);
+    jobs.push({ key, index: i });
+  }
+
+  const fetchOne = async (job) => {
+    const [lat, lng] = job.key.split(',');
+    const response = await clientGetJson(
+      `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`
+    );
+    const elevation = Array.isArray(response?.elevation) ? response.elevation[0] : response?.elevation;
+    return {
+      index: job.index,
+      elevation: elevation == null || !Number.isFinite(elevation) ? 0 : elevation,
+    };
+  };
+
+  const concurrency = 8;
+  for (let start = 0; start < jobs.length; start += concurrency) {
+    const chunk = jobs.slice(start, start + concurrency);
+    const settled = await Promise.allSettled(chunk.map((job) => fetchOne(job)));
+    const retryJobs = [];
+    settled.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        altitudes[result.value.index] = result.value.elevation;
+      } else {
+        retryJobs.push(chunk[idx]);
+      }
+    });
+    if (retryJobs.length > 0) {
+      const retried = await Promise.allSettled(retryJobs.map((job) => fetchOne(job)));
+      retried.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          altitudes[result.value.index] = result.value.elevation;
+        } else {
+          altitudes[retryJobs[idx].index] = null;
+        }
+      });
+    }
+  }
+
+  // 回填重复坐标
+  for (let i = 0; i < points.length; i++) {
+    const key = `${points[i].lat.toFixed(6)},${points[i].lng.toFixed(6)}`;
+    const first = seen.get(key);
+    if (first !== undefined && first !== i) altitudes[i] = altitudes[first];
+  }
+  return altitudes;
+}
+
+const CLIENT_ELEVATION_CACHE = new Map();
+const CLIENT_ELEVATION_CACHE_MAX = 8;
+
+function clientElevationCacheKey(points, source, proxy) {
+  // djb2 hash：只依赖坐标（6 位小数）、数据源与代理，避免把数千点直接当 key
+  let hash = 5381;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const s = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}|`;
+    for (let j = 0; j < s.length; j++) {
+      hash = ((hash << 5) + hash + s.charCodeAt(j)) | 0;
+    }
+  }
+  return `${source}|${proxy}|${points.length}|${hash >>> 0}`;
+}
+
+function clientElevationCacheGet(cacheKey) {
+  if (!CLIENT_ELEVATION_CACHE.has(cacheKey)) return undefined;
+  // 刷新为最近使用
+  const value = CLIENT_ELEVATION_CACHE.get(cacheKey);
+  CLIENT_ELEVATION_CACHE.delete(cacheKey);
+  CLIENT_ELEVATION_CACHE.set(cacheKey, value);
+  return value;
+}
+
+function clientElevationCacheSet(cacheKey, value) {
+  CLIENT_ELEVATION_CACHE.set(cacheKey, value);
+  while (CLIENT_ELEVATION_CACHE.size > CLIENT_ELEVATION_CACHE_MAX) {
+    const oldestKey = CLIENT_ELEVATION_CACHE.keys().next().value;
+    CLIENT_ELEVATION_CACHE.delete(oldestKey);
+  }
+}
+
+async function fetchAltitudesClient(points, source) {
+  const resolvedSource = (source || 'open-elevation').toLowerCase();
+  const sourceName = CLIENT_ELEVATION_SOURCE_NAMES[resolvedSource] || resolvedSource;
+
+  if (resolvedSource === 'none') {
+    return {
+      altitudes: null,
+      source: resolvedSource,
+      status: 'none',
+      message: '不写入海拔（FIT 海拔字段留空）',
+    };
+  }
+  if (resolvedSource === 'off' || !points || points.length === 0) {
+    return {
+      altitudes: null,
+      source: resolvedSource,
+      status: 'off',
+      message: '模拟海拔（离线生成）',
+    };
+  }
+
+  const proxy = clientCorsProxy();
+  const cacheKey = clientElevationCacheKey(points, resolvedSource, proxy);
+  const cached = clientElevationCacheGet(cacheKey);
+  if (cached) return cached;
+
+  try {
+    let altitudes;
+    if (resolvedSource.startsWith('opentopodata')) {
+      altitudes = await clientFetchOpenTopoData(points, resolvedSource);
+    } else if (resolvedSource === 'open-meteo') {
+      altitudes = await clientFetchOpenMeteo(points);
+    } else {
+      altitudes = await clientFetchOpenElevation(points);
+    }
+
+    const validCount = Array.isArray(altitudes)
+      ? altitudes.filter((v) => v != null && Number.isFinite(v)).length
+      : 0;
+
+    if (!Array.isArray(altitudes) || validCount === 0) {
+      return {
+        altitudes: null,
+        source: resolvedSource,
+        status: 'fallback',
+        message: `${sourceName} 获取失败（所有采样点均未返回），已回退模拟海拔`,
+      };
+    }
+
+    const result = validCount === altitudes.length
+      ? {
+          altitudes,
+          source: resolvedSource,
+          status: 'live',
+          message: `已获取真实海拔（${sourceName}，${altitudes.length} 个采样点）`,
+        }
+      : {
+          altitudes,
+          source: resolvedSource,
+          status: 'partial',
+          message: `已获取部分真实海拔（${sourceName}，成功 ${validCount}/${altitudes.length}），其余回退模拟海拔`,
+        };
+
+    clientElevationCacheSet(cacheKey, result);
+    return result;
+  } catch (e) {
+    console.warn(`${sourceName} 浏览器请求失败，回退到本地模拟海拔:`, e);
+    return {
+      altitudes: null,
+      source: resolvedSource,
+      status: 'fallback',
+      message: `${sourceName} 获取失败（${e?.message || e}），已回退模拟海拔`,
+    };
+  }
+}
+
 function setElevationStatus(info) {
   const el = document.getElementById('elevationStatus');
   if (!el) return;
@@ -2398,12 +2830,27 @@ function setElevationStatus(info) {
   let message = info.message || '';
   if (!message) {
     if (info.status === 'live') message = `已获取真实海拔（${sourceName}）`;
+    else if (info.status === 'partial') message = `已获取部分真实海拔（${sourceName}），其余回退模拟海拔`;
     else if (info.status === 'fallback') message = `${sourceName} 获取失败，已回退模拟海拔`;
     else if (info.status === 'none') message = '不写入海拔（FIT 海拔字段留空）';
     else message = '模拟海拔（离线生成）';
   }
-  el.className = `elevation-status ${info.status === 'live' ? 'ok' : info.status === 'fallback' ? 'warn' : info.status === 'none' ? 'none' : 'muted'}`;
+  const statusClass = info.status === 'live' ? 'ok'
+    : (info.status === 'partial' || info.status === 'fallback') ? 'warn'
+    : info.status === 'none' ? 'none'
+    : 'muted';
+  el.className = `elevation-status ${statusClass}`;
   el.textContent = message;
+}
+
+function downsampleSamples(samples, maxPoints = 500) {
+  if (!Array.isArray(samples) || samples.length <= maxPoints) return samples;
+  const result = [];
+  const step = (samples.length - 1) / (maxPoints - 1);
+  for (let i = 0; i < maxPoints; i++) {
+    result.push(samples[Math.round(i * step)]);
+  }
+  return result;
 }
 
 function renderPreviewCharts(preview) {
@@ -2414,13 +2861,14 @@ function renderPreviewCharts(preview) {
   
   openPreviewModal();
   
-  const labels = preview.samples.map((s) => (s.timeSec / 60).toFixed(1));
-  const paceData = preview.samples.map((s) => {
+  const chartSamples = downsampleSamples(preview.samples, 500);
+  const labels = chartSamples.map((s) => (s.timeSec / 60).toFixed(1));
+  const paceData = chartSamples.map((s) => {
     const speed = s.speed > 0 ? s.speed : 0.01;
     return (1000 / speed) / 60;
   });
-  const hrData = preview.samples.map((s) => s.heartRate);
-  const altData = preview.samples.map((s) => (typeof s.altitude === 'number' ? s.altitude : null));
+  const hrData = chartSamples.map((s) => s.heartRate);
+  const altData = chartSamples.map((s) => (typeof s.altitude === 'number' ? s.altitude : null));
   
   const paceCtx = document.getElementById("paceChart")?.getContext("2d");
   const hrCtx = document.getElementById("hrChart")?.getContext("2d");
@@ -2521,18 +2969,21 @@ async function previewActivity() {
   document.getElementById("generateFit").disabled = true;
   document.getElementById("previewBtn").disabled = true;
   
-  updateMessage("正在生成预览...");
+  updateMessage("正在获取海拔并生成预览...");
   
   try {
+    const activePoints = getActivePoints();
+    const elevation = await fetchAltitudesClient(activePoints, elevationSource);
     const res = await fetch("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startTime,
-        points: getActivePoints(),
+        points: activePoints,
         paceSecondsPerKm, hrRest, hrMax, lapCount,
         weightKg, powerFactor, gpsDrift, avgCadence,
         elevationSource,
+        altitudes: elevation.altitudes,
         includeHeartRate, includePower, includeCadence, includeGaitData,
         sportType: shared.sportType,
         heightCm: shared.heightCm,
@@ -2690,8 +3141,6 @@ document.getElementById('generatingCloseBtn')?.addEventListener('click', hideGen
 
 // ==================== 服务状态检测模块 ====================
 
-let serviceCheckInterval = null;
-
 async function checkServiceStatus() {
   const statusEl = document.getElementById('serviceStatus');
   if (!statusEl) return;
@@ -2732,6 +3181,9 @@ document.getElementById('serviceStatus')?.addEventListener('click', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
   checkServiceStatus();
   syncDeviceUI();
+  syncElevationProxyUI();
+  initCorsProxyInput();
+  document.getElementById('elevationSourceSelect')?.addEventListener('change', syncElevationProxyUI);
 });
 
 window.addEventListener('resize', () => {

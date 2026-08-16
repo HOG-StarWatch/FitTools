@@ -90,6 +90,11 @@
               <option value="open-meteo">Open-Meteo（真实海拔）</option>
               <option value="off">模拟海拔（离线）</option>
             </select>
+            <div id="elevationProxyRow" class="elevation-proxy-row" style="display:none;">
+              <label class="options-title" for="corsProxyInput">CORS 代理服务</label>
+              <input type="text" id="corsProxyInput" placeholder="https://corsproxy.io/?url=" autocomplete="off" spellcheck="false">
+              <div class="elevation-proxy-hint">仅 OpenTopoData 源需要；可含 <code>{url}</code> 占位符，留空则直连</div>
+            </div>
             <div id="elevationStatus" class="elevation-status"></div>
           </div>
         </div>

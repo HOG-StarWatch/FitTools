@@ -22,6 +22,10 @@ window.Repair = {
 
   async run() {
     if (this.RUNNING) return;
+    if (FFV.state.fitToolLabel) {
+      U.toast("未检测到错误", 3000);
+      return;
+    }
     const btn = U.$("#btn-repair");
     btn.disabled = true;
     this.RUNNING = true;
@@ -32,7 +36,7 @@ window.Repair = {
       status.textContent = "正在修复\u2026";
       await new Promise((r) => setTimeout(r, 30));
 
-      const decoder = new FitSDK.Decoder(FitSDK.Stream.fromArrayBuffer(FFV.state.bytes));
+      const decoder = new FitSDK.Decoder(FitSDK.Stream.fromArrayBuffer(FFV.state.bytes.buffer));
       const opts = {
         applyScaleAndOffset: true,
         expandSubFields: true,

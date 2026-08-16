@@ -178,7 +178,7 @@ export function exportActivityFile(
   const filename = `${filenamePrefix(result)}${result.variant}.${format}`;
   switch (format) {
     case 'tcx':
-      return { body: buildTcx(result, ctx), contentType: 'application/gpx+xml', filename };
+      return { body: buildTcx(result, ctx), contentType: 'application/vnd.garmin.tcx+xml', filename };
     case 'gpx':
       return { body: buildGpx(result, ctx), contentType: 'application/gpx+xml', filename };
     case 'csv':

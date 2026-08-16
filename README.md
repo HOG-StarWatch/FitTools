@@ -208,7 +208,7 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 
 ### 5. 海拔源配置
 
-海拔服务配置硬编码在 `src/elevation.ts` 的 `DEFAULT_ELEVATION_CONFIG` 中。
+海拔请求由**浏览器端**直接发起（`public/main.js` 中的 `fetchAltitudesClient`），服务端不请求任何第三方海拔 API。海拔数据随 `/api/preview`、`/api/generate-fit` 的 `altitudes` 字段一并提交。
 
 用户可在前端"海拔来源"下拉框按请求切换（`elevationSource`）：
 
@@ -216,14 +216,16 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 | -- | ---- |
 | `none` | 不查询、不写入海拔（FIT 海拔字段留空） |
 | `off` | 模拟海拔（正弦随机曲线） |
-| `open-elevation` | Open-Elevation 真实海拔 |
-| `opentopodata` | OpenTopoData `srtm90m` 数据集 |
-| `opentopodata-srtm30m` | OpenTopoData `srtm30m` 数据集 |
-| `opentopodata-aster30m` | OpenTopoData `aster30m` 数据集 |
-| `opentopodata-eudem25m` | OpenTopoData `eudem25m` 数据集 |
-| `open-meteo` | Open-Meteo 海拔服务 |
+| `open-elevation` | Open-Elevation 真实海拔（浏览器直连） |
+| `opentopodata` | OpenTopoData `srtm90m` 数据集（需 CORS 代理） |
+| `opentopodata-srtm30m` | OpenTopoData `srtm30m` 数据集（需 CORS 代理） |
+| `opentopodata-aster30m` | OpenTopoData `aster30m` 数据集（需 CORS 代理） |
+| `opentopodata-eudem25m` | OpenTopoData `eudem25m` 数据集（需 CORS 代理） |
+| `open-meteo` | Open-Meteo 海拔服务（浏览器直连） |
 
-任一真实服务请求失败时自动回退本地模拟海拔；各真实源均先按坐标去重，并以受限并发（默认 8）分批请求加速。
+- 浏览器端按坐标去重、受限并发（默认 8）分批请求；成功结果会按「坐标 + 数据源 + CORS 代理」缓存，重复预览/生成不重复消耗额度。
+- 单个批次/采样点失败会重试一次，仍失败则仅这些点回退本地模拟海拔（其余成功点保留）。
+- 选择任意 OpenTopoData 源时会显示「CORS 代理服务」输入框：可填 `https://corsproxy.io/?url=` 或带 `{url}` 占位符的前缀式代理；留空则直连。
 
 ---
 
@@ -283,13 +285,12 @@ TS-Hono/
 │   ├── device.ts       # 设备品牌映射（官方 4 + 社区 3 + Developer 255，前端自定义数值直通）
 │   ├── exporters.ts    # TCX / GPX / CSV 导出与文件分发
 │   ├── workers.ts      # Workers 入口
-│   ├── elevation.ts    # 海拔查询（8 种来源：不写入 / 模拟 / 6 种真实服务）
 ├── functions/
 │   └── api/
 │       └── [[catchall]].ts  # Pages Functions 入口
 ├── public/
 │   ├── index.html      # 前端页面
-│   ├── main.js         # 前端逻辑
+│   ├── main.js         # 前端逻辑（含浏览器端海拔获取与 CORS 代理）
 │   ├── sponsor.png     # 赞赏码
 │   ├── style.css       # 样式
 │   └── HOG_S_64.png   # 图标
@@ -354,6 +355,7 @@ TS-Hono/
   "gpsDrift": 0.1,
   "avgCadence": 170,
   "elevationSource": "open-elevation",
+  "altitudes": [40.2, 41.0],
   "includeHeartRate": true,
   "includePower": true,
   "includeCadence": true,
@@ -385,6 +387,7 @@ TS-Hono/
 | `gpsDrift` | 否 | GPS 漂移幅度，后端默认 0（前端界面默认 0.1） |
 | `avgCadence` | 否 | 目标平均步频，默认 170 |
 | `elevationSource` | 否 | 海拔来源：`none` / `off` / `open-elevation` / `opentopodata` / `opentopodata-srtm30m` / `opentopodata-aster30m` / `opentopodata-eudem25m` / `open-meteo` |
+| `altitudes` | 否 | 浏览器端获取的真实海拔数组，长度与 `points` 相同（路线未闭合时也接受 `points.length + 1`）；数组元素可为 `null` 表示该点回退模拟海拔。服务端不再请求任何第三方海拔 API |
 | `includeHeartRate` / `includePower` / `includeCadence` / `includeGaitData` | 否 | 传感器开关 |
 | `sportType` | 否 | 运动类型：`running`（默认）/ `walking` |
 | `sportName` | 否 | 运动名称（如"跑步"、"户外跑步"），用于预览回显与前端文件名前缀 |
@@ -417,7 +420,7 @@ TS-Hono/
 }
 ```
 
-> `elevation.status`：`live`（真实海拔）、`fallback`（请求失败已回退模拟）、`off`（模拟海拔）、`none`（不写入海拔）。
+> `elevation.status`：`live`（真实海拔）、`partial`（部分真实海拔，其余回退模拟）、`fallback`（请求失败已回退模拟）、`off`（模拟海拔）、`none`（不写入海拔）。
 > `stats.trainingLoad` 为 TRIMP 训练负荷（训练时长加权）；`trainingDurationSec` = 运动时长 + `elapsedExtraSeconds`。
 
 ### POST /api/generate-fit

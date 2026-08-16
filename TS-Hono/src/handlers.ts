@@ -1,10 +1,34 @@
 import { processRouteRequest, generateFitFile } from './lib';
-import type { RequestBody } from './lib';
-import { fetchAltitudesOrNull, DEFAULT_ELEVATION_CONFIG, parseElevationSource } from './elevation';
+import type { RequestBody, ProcessedRoute } from './lib';
 import { exportActivityFile } from './exporters';
 import type { ExportContext } from './exporters';
 
 const EXPORT_FORMATS = ['fit', 'tcx', 'gpx', 'csv'];
+const MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;
+
+export function validateJsonRequest(
+  contentType: string | null | undefined,
+  contentLength: string | null | undefined
+): Response | null {
+  const ct = (contentType || '').toLowerCase();
+  if (!ct.includes('application/json')) {
+    return jsonResponse({ error: 'Content-Type 必须为 application/json' }, 400);
+  }
+  const len = Number(contentLength || 0);
+  if (Number.isFinite(len) && len > MAX_REQUEST_BODY_BYTES) {
+    return jsonResponse({ error: `请求体超过大小上限（${Math.round(MAX_REQUEST_BODY_BYTES / 1024 / 1024)}MB）` }, 413);
+  }
+  return null;
+}
+
+const ELEVATION_SOURCE_NAMES: Record<string, string> = {
+  'open-elevation': 'Open-Elevation',
+  'opentopodata': 'OpenTopoData SRTM90',
+  'opentopodata-srtm30m': 'OpenTopoData SRTM30',
+  'opentopodata-aster30m': 'OpenTopoData ASTER30',
+  'opentopodata-eudem25m': 'OpenTopoData EUDEM25',
+  'open-meteo': 'Open-Meteo',
+};
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -13,11 +37,42 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function elevationConfigFor(source: unknown) {
-  const config = { ...DEFAULT_ELEVATION_CONFIG };
-  const requestSource = parseElevationSource(source);
-  if (requestSource) config.source = requestSource;
-  return config;
+function elevationInfoFor(
+  body: RequestBody,
+  result: ProcessedRoute
+): { source: string; status: string; message: string } {
+  const source = typeof body?.elevationSource === 'string' && body.elevationSource.trim()
+    ? body.elevationSource.trim().toLowerCase()
+    : 'open-elevation';
+  const sourceName = ELEVATION_SOURCE_NAMES[source] || source;
+
+  if (source === 'none') {
+    return { source, status: 'none', message: '不写入海拔（FIT 海拔字段留空）' };
+  }
+  if (source === 'off') {
+    return { source, status: 'off', message: '模拟海拔（离线生成）' };
+  }
+  // 以 processRouteRequest 实际应用结果为准，避免口径不一致
+  if (result.usedClientAltitudes) {
+    if (result.usedClientAltitudesPartial) {
+      return {
+        source,
+        status: 'partial',
+        message: `已获取部分真实海拔（${sourceName}），其余采样点已回退模拟海拔`,
+      };
+    }
+    const altitudeCount = Array.isArray(body?.altitudes) ? body.altitudes.length : 0;
+    return {
+      source,
+      status: 'live',
+      message: `已获取真实海拔（${sourceName}，${altitudeCount} 个采样点）`,
+    };
+  }
+  return {
+    source,
+    status: 'fallback',
+    message: `客户端未提供有效真实海拔（${sourceName}），已回退模拟海拔`,
+  };
 }
 
 function statsFromSamples(
@@ -83,21 +138,16 @@ export async function handlePreview(body: RequestBody): Promise<Response> {
     const result = processRouteRequest(body || {});
     if ('error' in result) return jsonResponse({ error: result.error }, 400);
 
-    const elevation = await fetchAltitudesOrNull(
-      result.samples.map(s => ({ lat: s.lat, lng: s.lng })),
-      elevationConfigFor(body.elevationSource)
-    );
-
-    const altitudes = elevation.altitudes;
+    // 海拔由浏览器端获取并通过 body.altitudes 传入，服务端不再发起第三方请求
+    const elevation = elevationInfoFor(body, result);
     const includeHeartRate = body.includeHeartRate !== false;
     const includePower = body.includePower !== false;
     const includeCadence = body.includeCadence !== false;
     const includeGaitData = body.includeGaitData !== false;
 
-    // 单次遍历完成真实海拔替换与传感器开关清零，避免重复复制大数组
-    const samples = result.samples.map((s, i) => ({
+    // 传感器开关清零（海拔已在 processRouteRequest 中写入 samples）
+    const samples = result.samples.map((s) => ({
       ...s,
-      altitude: altitudes ? altitudes[i] : s.altitude,
       heartRate: includeHeartRate ? s.heartRate : 0,
       power: includePower ? s.power : 0,
       cadence: includeCadence ? s.cadence : 0,
@@ -141,21 +191,19 @@ export async function handleGenerate(body: RequestBody): Promise<Response> {
       includeGaitData: body.includeGaitData !== false,
     };
 
-    const elevation = await fetchAltitudesOrNull(
-      result.samples.map(s => ({ lat: s.lat, lng: s.lng })),
-      elevationConfigFor(body.elevationSource)
-    );
+    // 海拔由浏览器端获取并通过 body.altitudes 传入，服务端不再发起第三方请求
+    const elevation = elevationInfoFor(body, result);
 
     const format = EXPORT_FORMATS.includes(String(body.format || 'fit')) ? String(body.format) : 'fit';
 
     if (format === 'fit') {
-      return generateFitFile(result, sensorOptions, elevation.altitudes, elevation);
+      return generateFitFile(result, sensorOptions, null, elevation);
     }
 
     const exported = exportActivityFile(
       format as 'tcx' | 'gpx' | 'csv',
       result,
-      { sensorOptions, altitudes: elevation.altitudes, elevationInfo: elevation } satisfies ExportContext
+      { sensorOptions, altitudes: null, elevationInfo: elevation } satisfies ExportContext
     );
 
     const headers: Record<string, string> = {

@@ -66,6 +66,10 @@ export interface ProcessedRoute {
   trainingLoad: number;
   maxElevation: number;
   minElevation: number;
+  /** 是否实际应用了客户端传来的真实海拔（长度与数值均有效） */
+  usedClientAltitudes: boolean;
+  /** 客户端海拔是否只有部分点成功（其余点已回退模拟） */
+  usedClientAltitudesPartial: boolean;
 }
 
 export interface RequestBody {
@@ -96,6 +100,8 @@ export interface RequestBody {
   intervalFastKm?: number;
   elapsedExtraSeconds?: number;
   format?: string;
+  /** 浏览器端获取的真实海拔数组，长度对应请求 points（或闭合后的 basePoints）；null 表示该点回退模拟 */
+  altitudes?: Array<number | null> | null;
 }
 
 export { FitEncoder, toSemicircles };
@@ -135,55 +141,169 @@ function buildClosedBasePoints(points: RoutePoint[]): RoutePoint[] {
   return [...points, { lat: first.lat, lng: first.lng }];
 }
 
+function resolveBaseAltitudes(
+  altitudes: Array<number | null> | null | undefined,
+  inputPointCount: number,
+  basePointCount: number
+): Array<number | null> | null {
+  if (!Array.isArray(altitudes)) return null;
+  let base: Array<number | null>;
+  if (altitudes.length === basePointCount) {
+    base = altitudes;
+  } else if (altitudes.length === inputPointCount && basePointCount === inputPointCount + 1) {
+    // 路线未闭合时服务端补了一个闭合点，客户端海拔也补第一个点
+    base = [...altitudes, altitudes[0]];
+  } else {
+    return null;
+  }
+  for (const v of base) {
+    // 允许 null（部分批次失败，由 computeSamples 对这些点回退模拟海拔）
+    if (v != null && (typeof v !== 'number' || !Number.isFinite(v))) return null;
+  }
+  return base;
+}
+
 function computeCalories(weightKg: number, distanceM: number, paceSecPerKm: number): number {
   const distanceKm = distanceM / 1000;
   const metFactor = 0.9 + (1000 / paceSecPerKm) * 0.25;
   return Math.round(weightKg * distanceKm * metFactor);
 }
 
-function generateCadence(speed: number, targetAvgCadence: number, index: number, totalPoints: number, isWalking = false): number {
-  const base = targetAvgCadence;
-  const speedEffect = (speed - 2.5) * 6;
-  const wave = Math.sin((index / totalPoints) * Math.PI * 4) * 4;
-  const noise = (Math.random() - 0.5) * 6;
-  const cadence = base + speedEffect + wave + noise;
-  const minCadence = isWalking ? 95 : 120;
-  const maxCadence = isWalking ? 170 : 210;
-  return Math.round(clamp(cadence, minCadence, maxCadence));
+// ==================== 仿真数据生成（统计自然化） ====================
+
+interface AthleteProfile {
+  cadenceBias: number;
+  powerBias: number;
+  groundBias: number;
+  flightBias: number;
+  voBias: number;
+  hrPhase: number;
+  altPhase: number;
+  altBase: number;
 }
 
-function generatePower(speed: number, weightKg: number, powerFactor: number, cadence: number): number {
+function createAthleteProfile(): AthleteProfile {
+  return {
+    cadenceBias: randn() * 2,
+    powerBias: randn() * 6,
+    groundBias: randn() * 6,
+    flightBias: randn() * 5,
+    voBias: randn() * 0.7,
+    hrPhase: Math.random() * Math.PI * 2,
+    altPhase: Math.random() * Math.PI * 2,
+    altBase: clamp(55 + randn() * 25, 10, 900),
+  };
+}
+
+// Box-Muller 高斯噪声，替代均匀白噪声
+let _gaussSpare: number | null = null;
+function randn(): number {
+  if (_gaussSpare != null) {
+    const v = _gaussSpare;
+    _gaussSpare = null;
+    return v;
+  }
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  const mag = Math.sqrt(-2.0 * Math.log(u));
+  _gaussSpare = mag * Math.sin(2.0 * Math.PI * v);
+  return mag * Math.cos(2.0 * Math.PI * v);
+}
+
+// 一阶自回归，相邻点相关，比白噪声更接近真实节拍/功率波动
+function arStep(prev: number, target: number, rate: number, noiseSigma: number, min: number, max: number): number {
+  const next = prev * (1 - rate) + target * rate + randn() * noiseSigma;
+  return Math.round(clamp(next, min, max));
+}
+
+function cadenceRange(isWalking: boolean): { min: number; max: number } {
+  return isWalking ? { min: 95, max: 170 } : { min: 120, max: 210 };
+}
+
+function generateCadenceAR(prev: number, speed: number, targetAvgCadence: number, isWalking: boolean, athlete: AthleteProfile): number {
+  const { min, max } = cadenceRange(isWalking);
+  const target = targetAvgCadence + (speed - 2.5) * 6 + athlete.cadenceBias;
+  return arStep(prev, target, 0.35, 2.2, min, max);
+}
+
+function generatePowerAR(prev: number, speed: number, weightKg: number, powerFactor: number, cadence: number, athlete: AthleteProfile): number {
   const basePower = weightKg * speed * powerFactor;
   const cadenceEffect = (cadence - 170) * 0.3;
-  const noise = (Math.random() - 0.5) * 10;
-  return Math.round(basePower + cadenceEffect + noise);
+  const target = basePower + cadenceEffect + athlete.powerBias;
+  return arStep(prev, target, 0.3, 5, 0, 2000);
 }
 
-function generateGroundTime(speed: number, cadence: number): number {
-  const baseTime = 280 - speed * 25;
-  const cadenceEffect = (170 - cadence) * 0.4;
-  const noise = (Math.random() - 0.5) * 15;
-  return Math.round(clamp(baseTime + cadenceEffect + noise, 180, 320));
-}
-
-function generateFlightTime(speed: number, cadence: number, groundTime: number): number {
+/**
+ * 步态三件套：以步态周期为基准耦合生成。
+ * 真实关系：groundTime + flightTime ≈ strideTime（60000/cadence），
+ * 触地时间随速度加快而缩短，占比约 55%-82%。
+ */
+function generateGroundFlightTime(speed: number, cadence: number, athlete: AthleteProfile): { groundTime: number; flightTime: number } {
   const strideTime = 60000 / cadence;
-  const flightTime = strideTime - groundTime;
-  const noise = (Math.random() - 0.5) * 10;
-  return Math.round(clamp(flightTime + noise, 80, 200));
+  // 速度越快触地占比越低：2.5m/s≈78%，5m/s≈65%
+  const ratioTarget = 0.78 - (speed - 2.5) * 0.052;
+  let groundTime = strideTime * clamp(ratioTarget + athlete.groundBias / 100, 0.55, 0.82) + randn() * 4;
+  groundTime = clamp(groundTime, strideTime * 0.52, strideTime * 0.85);
+  const flightTime = strideTime - groundTime + athlete.flightBias * 0.3 + randn() * 2;
+  return {
+    groundTime: Math.round(clamp(groundTime, 150, 340)),
+    flightTime: Math.round(clamp(flightTime, 60, 220)),
+  };
 }
 
-function generateVerticalOscillation(speed: number, cadence: number): number {
-  const base = 8.5 + speed * 0.5;
+function generateVerticalOscillation(speed: number, cadence: number, athlete: AthleteProfile): number {
+  // 垂直振幅 5.5-13cm，随速度增加，叠加个体差异与节拍间波动
+  const base = 7.5 + (speed - 2.5) * 1.2;
   const cadenceEffect = (cadence - 170) * -0.02;
-  const noise = (Math.random() - 0.5) * 1.5;
-  const cmValue = clamp(base + cadenceEffect + noise, 6, 12);
-  return cmValue * 10;
+  const cmValue = clamp(base + cadenceEffect + athlete.voBias + randn() * 0.6, 5.5, 13);
+  // FIT field 39 vertical_oscillation: scale 10, units mm
+  return cmValue * 100;
+}
+
+/**
+ * 模拟海拔：多频叠加 + 低频漂移 + 高斯噪声，避免单一正弦的规整指纹。
+ */
+function simulatedAltitude(frac: number, athlete: AthleteProfile): number {
+  return athlete.altBase
+    + 35 * Math.sin(frac * Math.PI * 3 + athlete.altPhase)
+    + 18 * Math.sin(frac * Math.PI * 7.3 + athlete.altPhase * 1.7)
+    + 8 * Math.sin(frac * Math.PI * 17.1 + athlete.altPhase * 0.9)
+    + randn() * 1.5;
 }
 
 interface ComputeSamplesResult {
   samples: SampleData[];
   totalDurationSec: number;
+}
+
+/**
+ * 对 null 点做邻点线性插值（仅前后都有有效值的区段）；
+ * 首尾无界的 null 保持 null，由调用方回退模拟海拔。
+ */
+function interpolateNulls(values: Array<number | null>): Array<number | null> {
+  const result = values.slice();
+  let i = 0;
+  while (i < result.length) {
+    if (result[i] != null) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < result.length && result[j] == null) j++;
+    const before = i > 0 ? result[i - 1] : null;
+    const after = j < result.length ? result[j] : null;
+    if (before != null && after != null) {
+      const span = j - i + 1;
+      for (let k = i; k < j; k++) {
+        const t = (k - i + 1) / span;
+        result[k] = before + (after - before) * t;
+      }
+    }
+    i = j;
+  }
+  return result;
 }
 
 function computeSamples(
@@ -196,7 +316,7 @@ function computeSamples(
   targetAvgCadence: number,
   weightKg: number,
   powerFactor: number,
-  altitudes: number[] | null = null,
+  altitudes: Array<number | null> | null = null,
   workoutMode?: string,
   intervalReps?: number,
   intervalFastKm?: number,
@@ -208,9 +328,7 @@ function computeSamples(
   const n = allPoints.length;
 
   const baseSpeedFactor = 0.98 + Math.random() * 0.06;
-  const phase1 = Math.random() * Math.PI * 2;
-  const phase2 = Math.random() * Math.PI * 2;
-  const baseAlt = 50 + Math.random() * 30;
+  const athlete = createAthleteProfile();
 
   const reps = intervalReps && intervalReps > 0 ? Math.max(1, Math.round(intervalReps)) : 4;
   const fastKm = intervalFastKm && intervalFastKm > 0 ? intervalFastKm : 0.4;
@@ -244,17 +362,20 @@ function computeSamples(
   const verticalOscillationValues = new Array<number>(n);
 
   const hasRealAltitude = altitudes != null && altitudes.length === n;
+  const effectiveAltitudes = hasRealAltitude ? interpolateNulls(altitudes!) : null;
   const walkingMode = isWalking;
 
   let currentHr = hrRestVal;
   let accumulatedTime = 0;
-  let breathingWavePhase = 0;
+  let breathingWavePhase = athlete.hrPhase;
+  let prevCadence = targetAvgCadence + athlete.cadenceBias;
+  let prevPower = 0;
 
   for (let i = 0; i < n; i++) {
     const frac = distances[i] / totalDist;
 
-    const longWave = 0.04 * Math.sin(frac * Math.PI * 2 + phase1);
-    const shortWave = 0.02 * Math.sin(frac * Math.PI * 6 + phase2);
+    const longWave = 0.04 * Math.sin(frac * Math.PI * 2 + athlete.altPhase);
+    const shortWave = 0.02 * Math.sin(frac * Math.PI * 6.7 + athlete.altPhase * 1.3);
     const { factor: modeFactor, hrBoost } = modeFactorAndHrBoost(frac);
     const speedRaw = avgSpeedTarget * baseSpeedFactor * (1 + longWave + shortWave) * modeFactor;
     instSpeedRaw[i] = speedRaw;
@@ -272,7 +393,13 @@ function computeSamples(
     }
 
     const intensity = Math.min(1, Math.max(0, 0.7 * intensityTarget + 0.3 * Math.min(1, Math.max(0.3, speedRaw / (avgSpeedTarget || 1e-6))) + hrBoost));
-    const hrTarget = hrRestVal + (hrMaxVal - hrRestVal) * intensity;
+    // 随运动时间缓慢上漂的心率（cardiac drift），最大 +5bpm，更接近真实长时间运动
+    const cardiacDrift = Math.min(5, (i / Math.max(1, n - 1)) * 5);
+    const hrTarget = clamp(
+      hrRestVal + (hrMaxVal - hrRestVal) * intensity + cardiacDrift * (0.4 + 0.6 * intensity),
+      hrRestVal,
+      hrMaxVal
+    );
 
     if (accumulatedTime < WARMUP_DURATION_SEC) {
       const warmupProgress = accumulatedTime / WARMUP_DURATION_SEC;
@@ -283,17 +410,23 @@ function computeSamples(
       currentHr += (hrTarget - currentHr) * responseRate;
     }
 
+    // 呼吸性窦性心律不齐：双频叠加 + 高斯噪声，替代单一正弦 + 均匀白噪声
     breathingWavePhase += 0.12 + 0.08 * intensity;
-    const breathingWave = Math.sin(breathingWavePhase) * (2.5 + 1.5 * intensity);
-    const strideNoise = (Math.random() - 0.5) * (1.5 + 2 * intensity);
-    const hrFluctuation = breathingWave + strideNoise;
+    const breathingWave =
+      (Math.sin(breathingWavePhase) + 0.35 * Math.sin(breathingWavePhase * 0.37 + 1.3))
+      * (2.2 + 1.6 * intensity);
+    const hrNoise = randn() * (1.2 + 1.5 * intensity);
+    const hrFluctuation = breathingWave + hrNoise;
 
-    hrValues[i] = Math.round(clamp(currentHr + hrFluctuation, hrRestVal - 5, hrMaxVal + 2));
-    cadenceValues[i] = generateCadence(speedRaw, targetAvgCadence, i, n, walkingMode);
-    powerValues[i] = generatePower(speedRaw, weightKg, powerFactor, cadenceValues[i]);
-    groundTimeValues[i] = generateGroundTime(speedRaw, cadenceValues[i]);
-    flightTimeValues[i] = generateFlightTime(speedRaw, cadenceValues[i], groundTimeValues[i]);
-    verticalOscillationValues[i] = generateVerticalOscillation(speedRaw, cadenceValues[i]);
+    hrValues[i] = Math.round(clamp(currentHr + hrFluctuation, hrRestVal - 5, hrMaxVal));
+    cadenceValues[i] = generateCadenceAR(prevCadence, speedRaw, targetAvgCadence, walkingMode, athlete);
+    prevCadence = cadenceValues[i];
+    powerValues[i] = generatePowerAR(prevPower, speedRaw, weightKg, powerFactor, cadenceValues[i], athlete);
+    prevPower = powerValues[i];
+    const stepTimes = generateGroundFlightTime(speedRaw, cadenceValues[i], athlete);
+    groundTimeValues[i] = stepTimes.groundTime;
+    flightTimeValues[i] = stepTimes.flightTime;
+    verticalOscillationValues[i] = generateVerticalOscillation(speedRaw, cadenceValues[i], athlete);
 
     accumulatedTime += 1;
   }
@@ -317,9 +450,10 @@ function computeSamples(
       t += segDurationsRaw[i - 1] * scale;
     }
     const frac = distances[i] / totalDist;
-    const altitude = hasRealAltitude
-      ? altitudes![i]
-      : baseAlt + 2 * Math.sin(frac * Math.PI * 4) + (Math.random() - 0.5) * 0.8;
+    const realAlt = effectiveAltitudes ? effectiveAltitudes[i] : null;
+    const altitude = realAlt != null && Number.isFinite(realAlt)
+      ? realAlt
+      : simulatedAltitude(frac, athlete);
     samples.push({
       timeSec: t,
       distance: distances[i],
@@ -376,6 +510,7 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     weightKg, powerFactor, gpsDrift, avgCadence,
     sportType, sportName, fitSubSport, customSubSport, deviceType,
     workoutMode, intervalReps, intervalFastKm, elapsedExtraSeconds,
+    altitudes: bodyAltitudes,
   } = body || {};
 
   if (!startTime || !points || !Array.isArray(points) || points.length < 2) {
@@ -446,7 +581,14 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     ? Math.floor(Number(elapsedExtraSeconds)) : 0;
 
   const basePoints = buildClosedBasePoints(points);
+  const baseAltitudes = resolveBaseAltitudes(bodyAltitudes, points.length, basePoints.length);
   const allPoints: RoutePoint[] = [];
+  const expandedAltitudes: Array<number | null> | null = baseAltitudes ? [] : null;
+  const validAltitudeCount = baseAltitudes
+    ? baseAltitudes.filter((v) => v != null && Number.isFinite(v)).length
+    : 0;
+  const usedClientAltitudes = baseAltitudes != null && validAltitudeCount > 0;
+  const hasPartialAltitudes = usedClientAltitudes && validAltitudeCount < baseAltitudes.length;
   const usedLaps = laps > 0 ? laps : 1;
   const shouldApplyDrift = drift > 0;
   const fullLaps = Math.floor(usedLaps);
@@ -466,8 +608,10 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
       offsetLatMeters = radiusMeters * Math.cos(angle);
       offsetLonMeters = radiusMeters * Math.sin(angle);
     }
-    for (const p of basePoints) {
+    for (let j = 0; j < basePoints.length; j++) {
+      const p = basePoints[j];
       allPoints.push(shouldApplyDrift ? offsetPointMeters(p, offsetLatMeters, offsetLonMeters) : p);
+      if (expandedAltitudes) expandedAltitudes.push(baseAltitudes![j]);
     }
   }
 
@@ -484,6 +628,7 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     for (let i = 0; i < partialPointsCount; i++) {
       const p = basePoints[i];
       allPoints.push(shouldApplyDrift ? offsetPointMeters(p, offsetLatMeters, offsetLonMeters) : p);
+      if (expandedAltitudes) expandedAltitudes.push(baseAltitudes![i]);
     }
   }
 
@@ -507,7 +652,7 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
 
   const { samples, totalDurationSec } = computeSamples(
     allPoints, distances, totalDist, pace, hrRestVal, hrMaxVal, targetAvgCadence, weight, power,
-    null, workoutMode === 'steady' ? undefined : workoutMode, intervalReps, intervalFastKm,
+    expandedAltitudes, workoutMode === 'steady' ? undefined : workoutMode, intervalReps, intervalFastKm,
     resolvedSportType === 'walking',
   );
 
@@ -544,6 +689,8 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     trainingLoad,
     maxElevation,
     minElevation,
+    usedClientAltitudes,
+    usedClientAltitudesPartial: hasPartialAltitudes,
   };
 }
 
@@ -567,6 +714,20 @@ export function applySensorOptions(samples: SampleData[], options?: {
     flightTime: gait ? s.flightTime : 0,
     verticalOscillation: gait ? s.verticalOscillation : 0,
   }));
+}
+
+/**
+ * 按厂商生成更自然的 32 位序列号。
+ * Garmin 常见 10 位、3 开头；开发/未知厂商用随机高位，避免清一色 0x1xxxxxxx 指纹。
+ */
+function generateSerialNumber(manufacturerId: number | undefined): number {
+  if (manufacturerId === 1) {
+    return 3000000000 + Math.floor(Math.random() * 999999999);
+  }
+  if (manufacturerId === 255) {
+    return 0x10000000 + Math.floor(Math.random() * 0x2fffffff);
+  }
+  return 100000000 + Math.floor(Math.random() * 1899999999);
 }
 
 export function generateFitFile(
@@ -619,7 +780,7 @@ export function generateFitFile(
     type: 'activity',
     manufacturer: deviceManufacturer ?? 'development',
     product: deviceProduct ?? 1,
-    serialNumber: deviceManufacturer !== undefined ? (0x10000000 + Math.floor(Math.random() * 0x7fffffff)) : 1,
+    serialNumber: deviceManufacturer !== undefined ? generateSerialNumber(deviceManufacturer) : 1,
     timeCreated: startDate,
     sport: fitSportName,
     subSport,
@@ -627,6 +788,7 @@ export function generateFitFile(
 
   encoder.writeFileIdMessage();
   encoder.writeDeviceInfoMessage(startDate);
+  encoder.writeEventMessage(startDate, 'timer', 'start');
 
   for (const s of sessionSamples) {
     const timestamp = new Date(startDate.getTime() + s.timeSec * 1000);
@@ -645,13 +807,17 @@ export function generateFitFile(
     if (includeAltitude) record.altitude = s.altitude;
     if (includeGaitData) {
       record.stanceTime = s.groundTime;
-      record.stanceTimePercent = clamp((s.groundTime / (s.groundTime + s.flightTime)) * 100, 40, 70);
+      // 由步态周期耦合生成，仅做宽松保护，不再硬 clamp 40-70
+      record.stanceTimePercent = clamp((s.groundTime / Math.max(1, s.groundTime + s.flightTime)) * 100, 50, 85);
       record.verticalOscillation = s.verticalOscillation;
-      record.stepLength = (s.speed * 1000) / (s.cadence / 60) / 100;
+      // FIT field 85 step_length: scale 10, units mm
+      record.stepLength = s.cadence > 0 ? Math.round((s.speed * 600000) / s.cadence) : 0;
     }
 
     encoder.writeRecordMessage(record);
   }
+
+  encoder.writeEventMessage(sessionEnd, 'timer', 'stop');
 
   encoder.writeLapMessage({
     timestamp: sessionEnd,

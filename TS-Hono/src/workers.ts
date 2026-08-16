@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { RequestBody } from './lib';
-import { handlePreview, handleGenerate } from './handlers';
+import { handlePreview, handleGenerate, validateJsonRequest } from './handlers';
 import { version } from '../package.json';
 
 type Bindings = {
@@ -34,6 +34,8 @@ app.get('/api/status', async (c) => {
 });
 
 app.post('/api/preview', async (c) => {
+  const invalid = validateJsonRequest(c.req.header('Content-Type'), c.req.header('Content-Length'));
+  if (invalid) return invalid;
   const body = await c.req.json<RequestBody>().catch(() => ({}));
   const res = await handlePreview(body);
   return new Response(res.body, {
@@ -43,6 +45,8 @@ app.post('/api/preview', async (c) => {
 });
 
 app.post('/api/generate-fit', async (c) => {
+  const invalid = validateJsonRequest(c.req.header('Content-Type'), c.req.header('Content-Length'));
+  if (invalid) return invalid;
   const body = await c.req.json<RequestBody>().catch(() => ({}));
   return handleGenerate(body);
 });

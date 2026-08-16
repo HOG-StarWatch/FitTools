@@ -43,6 +43,7 @@ window.App = {
       if (f) this.loadFile(f);
     });
 
+    U.$("#file-status").addEventListener("click", () => this.showFitToolInfo());
     U.$("#brand").addEventListener("click", () => this.openSupport());
     U.$("#support-close").addEventListener("click", () => this.closeSupport());
     U.$("#support-overlay").addEventListener("click", (e) => { if (e.target === U.$("#support-overlay")) this.closeSupport(); });
@@ -96,6 +97,39 @@ window.App = {
     return s === ".FIT";
   },
 
+  detectFitTool(bytes) {
+    try {
+      const tail = new TextDecoder().decode(bytes.slice(-64));
+      const idx = tail.lastIndexOf("FITTOOL:");
+      if (idx < 0) return null;
+      const label = tail.slice(idx + "FITTOOL:".length).replace(/\0+$/, "");
+      return label || null;
+    } catch (e) { /* ignore */ }
+    return null;
+  },
+
+  detectFitToolFromDeviceInfo(deviceInfoList) {
+    try {
+      for (const d of deviceInfoList) {
+        const raw = d.productName;
+        if (typeof raw !== "string" || !raw) continue;
+        let decoded = "";
+        for (let i = 0; i < raw.length; i++) decoded += String.fromCharCode(raw.charCodeAt(i) ^ 0x5b);
+        if (decoded.includes("HOG-StarWatch/FitTool")) return decoded.trim();
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  },
+
+  showFitToolInfo() {
+    const label = FFV.state.fitToolLabel;
+    if (label) {
+      U.toast(`该文件由 ${label} 生成`, 4000);
+    } else {
+      U.toast("未检测到 FitTool 生成标记", 3000);
+    }
+  },
+
   async decode(bytes, name, size) {
     const status = U.$("#file-status");
     U.$("#workbench").hidden = false;
@@ -111,6 +145,7 @@ window.App = {
     state.fileName = name;
     state.fileSize = size;
     state.bytes = bytes;
+    state.fitToolLabel = this.detectFitTool(bytes);
     state.integrity = null;
     state.header = null;
     state.errors = [];
@@ -149,12 +184,20 @@ window.App = {
       };
       const { messages, errors } = decoder.read(opts);
       state.messages = messages;
-      state.errors = errors || [];
 
       state.records = U.pick(messages, "record").slice();
       state.laps = U.pick(messages, "lap").slice();
       state.sessions = U.pick(messages, "session").slice();
       state.deviceInfo = U.pick(messages, "deviceInfo").slice();
+      const fromDevice = this.detectFitToolFromDeviceInfo(state.deviceInfo);
+      if (fromDevice) state.fitToolLabel = fromDevice;
+
+      // 旧版 FitTool 文件在 CRC 后有尾部标记，FitSDK 会把尾部报成“不是 FIT 文件”；
+      // 已识别为 FitTool 生成时忽略这类伪错误，避免误报为损坏。
+      state.errors = (errors || []).filter((e) => {
+        if (!state.fitToolLabel) return true;
+        return !/input is not a FIT file/i.test(String(e && e.message || e));
+      });
 
       let t0 = null;
       const SEMI = 180 / Math.pow(2, 31);

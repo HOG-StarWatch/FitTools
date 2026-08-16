@@ -77,17 +77,16 @@ const FIT_TYPES: Record<string, { baseType: number; size: number }> = {
   uint16: { baseType: 0x84, size: 2 },
   sint32: { baseType: 0x85, size: 4 },
   uint32: { baseType: 0x86, size: 4 },
-  float32: { baseType: 0x89, size: 4 },
-  float64: { baseType: 0x90, size: 8 },
+  float32: { baseType: 0x88, size: 4 },
+  float64: { baseType: 0x89, size: 8 },
   uint8z: { baseType: 0x0A, size: 1 },
   uint16z: { baseType: 0x8B, size: 2 },
   uint32z: { baseType: 0x8C, size: 4 },
   byte: { baseType: 0x0D, size: 1 },
   string: { baseType: 0x07, size: 1 },
-  sint64: { baseType: 0x8F, size: 8 },
-  // Note: uint64 shares baseType 0x90 with float64 per FIT SDK spec
-  uint64: { baseType: 0x90, size: 8 },
-  uint64z: { baseType: 0x91, size: 8 },
+  sint64: { baseType: 0x8E, size: 8 },
+  uint64: { baseType: 0x8F, size: 8 },
+  uint64z: { baseType: 0x90, size: 8 },
 };
 
 const MESG_NUM: Record<string, number> = {
@@ -99,6 +98,22 @@ const MESG_NUM: Record<string, number> = {
   lap: 19,
   activity: 34,
   device_info: 23,
+};
+
+const EVENT_MAP: Record<string, number> = {
+  timer: 0,
+  workout: 3,
+  recreation: 4,
+};
+
+const EVENT_TYPE_MAP: Record<string, number> = {
+  start: 0,
+  stop: 1,
+  consecutive: 2,
+  marker: 3,
+  stop_all: 4,
+  stop_disable: 5,
+  stop_disable_all: 6,
 };
 
 const SPORT_MAP: Record<string, number> = {
@@ -173,6 +188,11 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     27: { size: 1, baseType: FIT_TYPES.string.baseType },  // product_name
     253: { size: 4, baseType: FIT_TYPES.uint32.baseType }, // timestamp
   },
+  event: {
+    0: { size: 1, baseType: FIT_TYPES.enum.baseType },     // event
+    1: { size: 1, baseType: FIT_TYPES.enum.baseType },     // event_type
+    253: { size: 4, baseType: FIT_TYPES.uint32.baseType },  // timestamp
+  },
   session: {
     2: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // start_time
     5: { size: 1, baseType: FIT_TYPES.enum.baseType },     // sport
@@ -189,6 +209,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     22: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // total_ascent
     23: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // total_descent
     134: { size: 2, baseType: FIT_TYPES.uint16.baseType }, // avg_step_length (scale 10, units mm)
+    254: { size: 2, baseType: FIT_TYPES.uint16.baseType }, // message_index
   },
   lap: {
     2: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // start_time
@@ -203,6 +224,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     19: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // avg_power
     25: { size: 1, baseType: FIT_TYPES.enum.baseType },    // sport
     39: { size: 1, baseType: FIT_TYPES.enum.baseType },    // sub_sport
+    254: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // message_index
   },
   activity: {
     0: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // total_timer_time
@@ -253,11 +275,12 @@ function encodeUtf8(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-function deviceNote(date: Date): string {
-  const code = [19, 20, 28, 118, 8, 47, 58, 41, 12, 58, 47, 56, 51, 116, 29, 50, 47, 15, 52, 52, 55];
-  let brand = '';
-  for (let i = 0; i < code.length; i++) brand += String.fromCharCode(code[i] ^ 91);
-  return brand + ' ' + date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+function buildProductName(date: Date): string {
+  const label = 'HOG-StarWatch/FitTool ' + date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const bytes = encodeUtf8(label);
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i] ^ 0x5b);
+  return out;
 }
 
 // ==================== FitEncoder ====================
@@ -297,17 +320,27 @@ export class FitEncoder {
   }
 
   writeDeviceInfoMessage(timestamp: Date): void {
-    const note = deviceNote(this.options.timeCreated);
     const fields: Array<{ num: number; value: number; string?: string }> = [
       { num: 253, value: this.getDateValue(timestamp) },
       { num: 2, value: this.resolveManufacturerId() },
       { num: 3, value: this.options.serialNumber === 1 ? 0xffffffff : this.options.serialNumber },
       { num: 4, value: this.options.product },
-      { num: 27, value: 0, string: note },
+      { num: 27, value: 0, string: buildProductName(this.options.timeCreated) },
     ];
 
     this.writeDefinitionMessage(MESG_NUM['device_info'], 'device_info', fields, true);
     this.writeDataMessage(MESG_NUM['device_info'], fields);
+  }
+
+  writeEventMessage(timestamp: Date, event = 'timer', eventType = 'start'): void {
+    const fields: Array<{ num: number; value: number }> = [
+      { num: 253, value: this.getDateValue(timestamp) },
+      { num: 0, value: EVENT_MAP[event] || 0 },
+      { num: 1, value: EVENT_TYPE_MAP[eventType] || 0 },
+    ];
+
+    this.writeDefinitionMessage(MESG_NUM['event'], 'event', fields, true);
+    this.writeDataMessage(MESG_NUM['event'], fields);
   }
 
   writeSessionMessage(data: SessionData, includeHeartRate = true, includePower = true, includeCadence = true): void {
@@ -321,6 +354,7 @@ export class FitEncoder {
       { num: 9, value: Math.round(data.totalDistance * 100) },
       { num: 11, value: data.totalCalories },
       { num: 14, value: Math.round(data.avgSpeed * 1000) },
+      { num: 254, value: 0 },
     ];
 
     if (includeHeartRate) {
@@ -348,6 +382,7 @@ export class FitEncoder {
       { num: 13, value: Math.round(data.avgSpeed * 1000) },
       { num: 25, value: SPORT_MAP[data.sport] || 1 },
       { num: 39, value: resolveSubSportId(data.subSport) },
+      { num: 254, value: 0 },
     ];
 
     if (includeHeartRate) {
@@ -409,11 +444,11 @@ export class FitEncoder {
       fields.push({ num: 40, value: Math.round(data.stanceTimePercent * 100) });
     }
     if (data.verticalOscillation !== undefined) {
-      // lib.ts 已返回 FIT 原始值（cm × 10）
+      // lib.ts 已返回 FIT 原始值（mm × 10，即 cm × 100）
       fields.push({ num: 39, value: Math.round(data.verticalOscillation) });
     }
     if (data.stepLength !== undefined) {
-      // lib.ts 已返回 FIT 原始值（m × 10）
+      // lib.ts 已返回 FIT 原始值（mm × 10）
       fields.push({ num: 85, value: Math.round(data.stepLength) });
     }
     if (data.altitude !== undefined) {
