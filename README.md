@@ -384,7 +384,7 @@ TS-Hono/
 | `variantIndex` | 否 | 变体序号，默认 1 |
 | `weightKg` | 否 | 体重（30~150kg，含边界），默认 65 |
 | `powerFactor` | 否 | 功率因数，默认 1.3，上限 10（超出 clamp） |
-| `gpsDrift` | 否 | GPS 漂移幅度，后端默认 0（前端界面默认 0.1） |
+| `gpsDrift` | 否 | GPS 漂移幅度，后端默认 0（前端界面默认 0.1），钳制到 0~1000 米 |
 | `avgCadence` | 否 | 目标平均步频，默认 170 |
 | `elevationSource` | 否 | 海拔来源：`none` / `off` / `open-elevation` / `opentopodata` / `opentopodata-srtm30m` / `opentopodata-aster30m` / `opentopodata-eudem25m` / `open-meteo` |
 | `altitudes` | 否 | 浏览器端获取的真实海拔数组，长度与 `points` 相同（路线未闭合时也接受 `points.length + 1`）；数组元素可为 `null` 表示该点回退模拟海拔。服务端不再请求任何第三方海拔 API |
@@ -398,7 +398,7 @@ TS-Hono/
 | `workoutMode` | 否 | 训练模式：`steady`（默认）/ `negative_split` / `interval` / `lsd` |
 | `intervalReps` | 否 | 间歇跑组数（`workoutMode=interval` 时生效），默认 4 |
 | `intervalFastKm` | 否 | 间歇跑快跑段距离（公里），默认 0.4 |
-| `elapsedExtraSeconds` | 否 | 训练时长额外增加秒数（FIT `total_elapsed_time`），默认 0 |
+| `elapsedExtraSeconds` | 否 | 训练时长额外增加秒数（FIT `total_elapsed_time`），默认 0，上限 604800（7 天） |
 | `format` | 否 | 仅 `/api/generate-fit` 使用：`fit`（默认）/ `tcx` / `gpx` / `csv` |
 
 **响应：**
@@ -429,12 +429,16 @@ TS-Hono/
 
 **请求体：** 与 `/api/preview` 相同，`format` 指定导出格式。
 
+> **预览快照复用（可选）**：`preview` 字段可直接回传最近一次 `/api/preview` 的响应。服务端校验通过后直接复用其样本，**跳过轨迹展开与样本仿真**（对 5 万点规模可省去绝大部分计算）；校验失败会自动回退全量计算，行为与不带该字段完全一致。前端在"预览后参数未变即生成"的流程中会自动附带，多份批量导出时参数一致的行也会复用同一份快照。
+>
+> 请求体大小上限为 16MB（快照最多约数 MB），超出返回 413。
+
 **响应：**
 
 | `format` | `Content-Type` | 文件名 |
 | -------- | -------------- | ------ |
 | `fit` | `application/vnd.ant.fit` | `run_{variantIndex}.fit` / `walk_{variantIndex}.fit` |
-| `tcx` | `application/gpx+xml` | `run_{variantIndex}.tcx` |
+| `tcx` | `application/vnd.garmin.tcx+xml` | `run_{variantIndex}.tcx` |
 | `gpx` | `application/gpx+xml` | `run_{variantIndex}.gpx` |
 | `csv` | `text/csv; charset=utf-8` | `run_{variantIndex}.csv` |
 

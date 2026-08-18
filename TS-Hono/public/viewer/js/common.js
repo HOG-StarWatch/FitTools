@@ -14,7 +14,7 @@ window.FFV = {
     sessions: [],
     deviceInfo: [],
     isValidFit: false,
-    fitToolLabel: null,
+    sourceLabel: null,
   },
 };
 

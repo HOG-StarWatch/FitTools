@@ -19,6 +19,9 @@ export const MAX_HR_REST = 120;
 export const WARMUP_DURATION_SEC = 60;
 export const MIN_WEIGHT_KG = 30;
 export const MAX_WEIGHT_KG = 150;
+export const MAX_GPS_DRIFT_METERS = 1000;       // GPS 漂移幅度钳制上限（米）
+export const MAX_ELAPSED_EXTRA_SECONDS = 604800; // 训练时长额外秒数上限（7 天）
+const MAX_FIT_ELAPSED_MS = 0xffffffff;          // FIT uint32 毫秒上限，约 49.7 天
 
 export interface RoutePoint {
   lat: number;
@@ -102,6 +105,8 @@ export interface RequestBody {
   format?: string;
   /** 浏览器端获取的真实海拔数组，长度对应请求 points（或闭合后的 basePoints）；null 表示该点回退模拟 */
   altitudes?: Array<number | null> | null;
+  /** 前端把最近一次 /api/preview 响应原样回传；服务端校验通过后直接复用样本，跳过全量重算 */
+  preview?: PreviewSnapshot | null;
 }
 
 export { FitEncoder, toSemicircles };
@@ -132,7 +137,7 @@ function offsetPointMeters(point: RoutePoint, offsetLatMeters: number, offsetLon
   };
 }
 
-function buildClosedBasePoints(points: RoutePoint[]): RoutePoint[] {
+function buildClosedBasePoints(points: RoutePoint[] | undefined): RoutePoint[] {
   if (!points || points.length < 2) return points || [];
   const first = points[0];
   const last = points[points.length - 1];
@@ -263,7 +268,7 @@ function generateVerticalOscillation(speed: number, cadence: number, athlete: At
 }
 
 /**
- * 模拟海拔：多频叠加 + 低频漂移 + 高斯噪声，避免单一正弦的规整指纹。
+ * 模拟海拔：多频叠加 + 低频漂移 + 高斯噪声，避免单一正弦的规整特征。
  */
 function simulatedAltitude(frac: number, athlete: AthleteProfile): number {
   return athlete.altBase
@@ -474,13 +479,39 @@ function computeSamples(
   return { samples, totalDurationSec: computedTotalDurationSec };
 }
 
-function computeElevationSummary(samples: SampleData[]): {
+/**
+ * 统计统一入口：海拔升降/极值、心率/步频/功率均值（跳过被传感器开关清零的 0 值）、
+ * 平均步幅与 TRIMP 训练负荷。Preview、Generate（全量或快照）、FIT 会话汇总共用，
+ * 取代原先多份重复实现，保证口径一致。
+ */
+export interface SampleStats {
   totalAscent: number;
   totalDescent: number;
+  maxElevation: number;
+  minElevation: number;
+  avgHeartRate: number;
+  avgCadence: number;
+  avgPower: number;
   avgStrideLength: number;
-} {
+  trainingLoad: number;
+}
+
+export function computeSampleStats(
+  samples: SampleData[],
+  hrRestVal: number,
+  hrMaxVal: number,
+  totalDurationSec: number
+): SampleStats {
   let totalAscent = 0;
   let totalDescent = 0;
+  let maxElevation = -Infinity;
+  let minElevation = Infinity;
+  let hrSum = 0;
+  let hrCount = 0;
+  let cadSum = 0;
+  let cadCount = 0;
+  let powerSum = 0;
+  let powerCount = 0;
   let strideSum = 0;
   let strideCount = 0;
 
@@ -491,56 +522,113 @@ function computeElevationSummary(samples: SampleData[]): {
   }
 
   for (const s of samples) {
+    if (s.altitude > maxElevation) maxElevation = s.altitude;
+    if (s.altitude < minElevation) minElevation = s.altitude;
+    if (s.heartRate > 0) { hrSum += s.heartRate; hrCount++; }
+    if (s.cadence > 0) { cadSum += s.cadence; cadCount++; }
+    if (s.power > 0) { powerSum += s.power; powerCount++; }
     if (s.speed > 0 && s.cadence > 0) {
       strideSum += (s.speed * 60) / s.cadence;
       strideCount++;
     }
   }
 
+  const avgHrFloat = hrCount > 0 ? hrSum / hrCount : hrRestVal;
+  const trainingLoad = Math.round(
+    (totalDurationSec / 60) *
+    ((avgHrFloat - hrRestVal) / Math.max(1, hrMaxVal - hrRestVal)) *
+    100 / 10
+  );
+
   return {
     totalAscent,
     totalDescent,
+    maxElevation: Number.isFinite(maxElevation) ? maxElevation : 0,
+    minElevation: Number.isFinite(minElevation) ? minElevation : 0,
+    avgHeartRate: hrCount > 0 ? Math.round(hrSum / hrCount) : 0,
+    avgCadence: cadCount > 0 ? Math.round(cadSum / cadCount) : 0,
+    avgPower: powerCount > 0 ? Math.round(powerSum / powerCount) : 0,
     avgStrideLength: strideCount > 0 ? strideSum / strideCount : 0,
+    trainingLoad,
   };
 }
 
-export function processRouteRequest(body: RequestBody): { error: string } | ProcessedRoute {
-  const {
-    startTime, points, paceSecondsPerKm, hrRest, hrMax, lapCount, variantIndex,
-    weightKg, powerFactor, gpsDrift, avgCadence,
-    sportType, sportName, fitSubSport, customSubSport, deviceType,
-    workoutMode, intervalReps, intervalFastKm, elapsedExtraSeconds,
-    altitudes: bodyAltitudes,
-  } = body || {};
-
-  if (!startTime || !points || !Array.isArray(points) || points.length < 2) {
-    return { error: '缺少参数：需要 startTime、至少两个轨迹点 points' };
+/** 轨迹点校验（全量与快照路径共用），错误信息与旧实现一致 */
+function validateRoutePoints(points: RoutePoint[] | undefined): string | null {
+  if (!Array.isArray(points) || points.length < 2) {
+    return '缺少参数：需要 startTime、至少两个轨迹点 points';
   }
-
   if (points.length > MAX_POINTS) {
-    return { error: `轨迹点数量超过上限 (${MAX_POINTS})` };
+    return `轨迹点数量超过上限 (${MAX_POINTS})`;
   }
-
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     if (!p || typeof p !== 'object' ||
         typeof p.lat !== 'number' || typeof p.lng !== 'number' ||
         !Number.isFinite(p.lat) || !Number.isFinite(p.lng) ||
         p.lat < -90 || p.lat > 90 || p.lng < -180 || p.lng > 180) {
-      return { error: `第 ${i + 1} 个轨迹点坐标无效（纬度 -90~90，经度 -180~180）` };
+      return `第 ${i + 1} 个轨迹点坐标无效（纬度 -90~90，经度 -180~180）`;
     }
   }
+  return null;
+}
 
-  const startDate = new Date(startTime);
-  if (Number.isNaN(startDate.getTime())) {
-    return { error: 'startTime 格式不正确' };
+/** 子运动解析（全量与快照路径共用） */
+export function resolveSubSport(body: RequestBody, sportType: 'running' | 'walking'): string | number {
+  const { fitSubSport, customSubSport } = body || {};
+  const customSub = customSubSport !== undefined && customSubSport !== null && String(customSubSport).trim() !== ''
+    ? Number(customSubSport) : undefined;
+  let subSport: string | number = 'generic';
+  if (sportType === 'walking') {
+    subSport = fitSubSport === 'indoorWalking' ? 'indoorWalking'
+      : fitSubSport === 'casualWalking' ? 'casualWalking' : 'generic';
+  } else if (typeof fitSubSport === 'number' && Number.isFinite(fitSubSport)) {
+    subSport = Math.max(0, Math.min(255, Math.floor(fitSubSport)));
+  } else if (typeof fitSubSport === 'string' && fitSubSport.trim()) {
+    subSport = fitSubSport.trim();
   }
+  if (customSub !== undefined && Number.isFinite(customSub)) {
+    subSport = Math.max(0, Math.min(255, Math.floor(customSub)));
+  }
+  return subSport;
+}
+
+export interface ParsedRequestParams {
+  startDate: Date;
+  sportType: 'running' | 'walking';
+  sportName: string;
+  subSport: string | number;
+  weight: number;
+  power: number;
+  drift: number;
+  targetAvgCadence: number;
+  pace: number;
+  hrMaxVal: number;
+  hrRestVal: number;
+  laps: number;
+  variant: number;
+  elapsedExtra: number;
+  deviceManufacturer?: number;
+  deviceProduct?: number;
+}
+
+/** 基础参数解析与钳制（全量与快照路径共用），语义与原 processRouteRequest 完全一致 */
+export function parseRequestParams(body: RequestBody): { error: string } | ParsedRequestParams {
+  const {
+    startTime, paceSecondsPerKm, hrRest, hrMax, lapCount, variantIndex,
+    weightKg, powerFactor, gpsDrift, avgCadence,
+    sportType, sportName, deviceType, elapsedExtraSeconds,
+  } = body || {};
+
+  if (!startTime) return { error: '缺少参数：需要 startTime、至少两个轨迹点 points' };
+  const startDate = new Date(startTime);
+  if (Number.isNaN(startDate.getTime())) return { error: 'startTime 格式不正确' };
 
   const weight = (Number.isFinite(Number(weightKg)) && (weightKg ?? 0) >= MIN_WEIGHT_KG && (weightKg ?? 0) <= MAX_WEIGHT_KG)
     ? Number(weightKg) : DEFAULT_WEIGHT_KG;
   const power = (Number.isFinite(Number(powerFactor)) && (powerFactor ?? 0) > 0)
     ? Math.min(MAX_POWER_FACTOR, Number(powerFactor)) : DEFAULT_POWER_FACTOR;
-  const drift = Number.isFinite(Number(gpsDrift)) ? Number(gpsDrift) : 0;
+  const drift = Number.isFinite(Number(gpsDrift)) ? clamp(Number(gpsDrift), 0, MAX_GPS_DRIFT_METERS) : 0;
   const resolvedSportType: 'running' | 'walking' = sportType === 'walking' ? 'walking' : 'running';
   const defaultPace = resolvedSportType === 'walking' ? DEFAULT_WALK_PACE_SEC_PER_KM : DEFAULT_PACE_SEC_PER_KM;
   const defaultCadence = resolvedSportType === 'walking' ? DEFAULT_WALK_CADENCE : DEFAULT_AVG_CADENCE;
@@ -559,29 +647,147 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     ? sportName.trim()
     : (resolvedSportType === 'walking' ? '健走' : '跑步');
 
-  const customSub = customSubSport !== undefined && customSubSport !== null && String(customSubSport).trim() !== ''
-    ? Number(customSubSport) : undefined;
-  let subSport: string | number = 'generic';
-  if (resolvedSportType === 'walking') {
-    subSport = fitSubSport === 'indoorWalking' ? 'indoorWalking'
-      : fitSubSport === 'casualWalking' ? 'casualWalking' : 'generic';
-  } else if (typeof fitSubSport === 'number' && Number.isFinite(fitSubSport)) {
-    subSport = Math.max(0, Math.min(255, Math.floor(fitSubSport)));
-  } else if (typeof fitSubSport === 'string' && fitSubSport.trim()) {
-    subSport = fitSubSport.trim();
-  }
-
-  // 自定义子运动数值优先级最高，walking 模式下同样覆盖默认子运动
-  if (customSub !== undefined && Number.isFinite(customSub)) {
-    subSport = Math.max(0, Math.min(255, Math.floor(customSub)));
-  }
-
+  const subSport = resolveSubSport(body, resolvedSportType);
   const device = resolveDevice(deviceType);
   const elapsedExtra = Number.isFinite(Number(elapsedExtraSeconds)) && Number(elapsedExtraSeconds) >= 0
-    ? Math.floor(Number(elapsedExtraSeconds)) : 0;
+    ? Math.min(MAX_ELAPSED_EXTRA_SECONDS, Math.floor(Number(elapsedExtraSeconds))) : 0;
 
+  return {
+    startDate,
+    sportType: resolvedSportType,
+    sportName: resolvedSportName,
+    subSport,
+    weight,
+    power,
+    drift,
+    targetAvgCadence,
+    pace,
+    hrMaxVal,
+    hrRestVal,
+    laps,
+    variant,
+    elapsedExtra,
+    deviceManufacturer: device?.manufacturer,
+    deviceProduct: device?.product,
+  };
+}
+
+/** 预览响应快照（前端把 /api/preview 的响应原样回传，服务端校验后直接复用，跳过全量重算） */
+export interface PreviewSnapshot {
+  totalDistanceMeters: number;
+  totalDurationSec: number;
+  calories: number;
+  samples: SampleData[];
+}
+
+/**
+ * 用预览快照重建 ProcessedRoute：不做轨迹展开 / computeSamples（省去大头计算）。
+ * 任何校验失败都返回 { error }，调用方应回退到全量 processRouteRequest。
+ */
+export function buildSyntheticProcessedRoute(body: RequestBody): { error: string } | ProcessedRoute {
+  const snap = body?.preview;
+  if (!snap) return { error: '缺少预览快照 preview' };
+  if (!Array.isArray(snap.samples) || snap.samples.length < 2 || snap.samples.length > MAX_EXPANDED_POINTS) {
+    return { error: '预览快照无效：samples 数量缺失或超限' };
+  }
+  if (!Number.isFinite(snap.totalDistanceMeters) || snap.totalDistanceMeters <= 0 ||
+      !Number.isFinite(snap.totalDurationSec) || snap.totalDurationSec <= 0 ||
+      !Number.isFinite(snap.calories) || snap.calories < 0) {
+    return { error: '预览快照无效：总计数值非法' };
+  }
+
+  const parsed = parseRequestParams(body);
+  if ('error' in parsed) return parsed;
+  const pointError = validateRoutePoints(body?.points);
+  if (pointError) return { error: pointError };
+
+  let prevSec = -1;
+  let prevDist = -1;
+  for (let i = 0; i < snap.samples.length; i++) {
+    const s = snap.samples[i];
+    if (!s || typeof s !== 'object') return { error: `预览快照第 ${i + 1} 个样本无效` };
+    const nums = [s.timeSec, s.distance, s.speed, s.heartRate, s.cadence, s.power, s.groundTime, s.flightTime, s.verticalOscillation, s.lat, s.lng, s.altitude];
+    for (const v of nums) {
+      if (typeof v !== 'number' || !Number.isFinite(v)) return { error: `预览快照第 ${i + 1} 个样本数值无效` };
+    }
+    if (s.lat < -90 || s.lat > 90 || s.lng < -180 || s.lng > 180) return { error: `预览快照第 ${i + 1} 个样本坐标越界` };
+    if (s.timeSec < 0 || s.distance < 0 || s.speed < 0 || s.timeSec < prevSec || s.distance < prevDist) {
+      return { error: `预览快照第 ${i + 1} 个样本时间/距离未单调递增` };
+    }
+    prevSec = s.timeSec;
+    prevDist = s.distance;
+  }
+
+  const sampleStats = computeSampleStats(snap.samples, parsed.hrRestVal, parsed.hrMaxVal, snap.totalDurationSec);
+
+  // 总量与样本末点一致性校验（≤1% 容差），防止会话汇总与逐点记录互相矛盾
+  const lastSample = snap.samples[snap.samples.length - 1];
+  if (Math.abs(lastSample.distance - snap.totalDistanceMeters) > Math.max(1, snap.totalDistanceMeters * 0.01) ||
+      Math.abs(lastSample.timeSec - snap.totalDurationSec) > Math.max(1, snap.totalDurationSec * 0.01)) {
+    return { error: '预览快照无效：总距离/总时长与样本末点不一致' };
+  }
+
+  // 海拔标志仅用于生成提示文案，这里只做轻量解析（不做全量计算）
+  const points = body?.points || [];
   const basePoints = buildClosedBasePoints(points);
-  const baseAltitudes = resolveBaseAltitudes(bodyAltitudes, points.length, basePoints.length);
+  const baseAltitudes = resolveBaseAltitudes(body?.altitudes, points.length, basePoints.length);
+  const validAltitudeCount = baseAltitudes ? baseAltitudes.filter((v) => v != null && Number.isFinite(v)).length : 0;
+  const usedClientAltitudes = baseAltitudes != null && validAltitudeCount > 0;
+  const hasPartialAltitudes = usedClientAltitudes && validAltitudeCount < baseAltitudes.length;
+
+  return {
+    startDate: parsed.startDate,
+    totalDist: snap.totalDistanceMeters,
+    pace: parsed.pace,
+    hrRestVal: parsed.hrRestVal,
+    hrMaxVal: parsed.hrMaxVal,
+    targetAvgCadence: parsed.targetAvgCadence,
+    weight: parsed.weight,
+    power: parsed.power,
+    calories: Math.round(snap.calories),
+    laps: parsed.laps,
+    variant: parsed.variant,
+    samples: snap.samples,
+    totalDurationSec: snap.totalDurationSec,
+    totalAscent: sampleStats.totalAscent,
+    totalDescent: sampleStats.totalDescent,
+    avgStrideLength: sampleStats.avgStrideLength,
+    sportType: parsed.sportType,
+    sportName: parsed.sportName,
+    subSport: parsed.subSport,
+    deviceManufacturer: parsed.deviceManufacturer,
+    deviceProduct: parsed.deviceProduct,
+    elapsedExtraSeconds: parsed.elapsedExtra,
+    trainingLoad: sampleStats.trainingLoad,
+    maxElevation: sampleStats.maxElevation,
+    minElevation: sampleStats.minElevation,
+    usedClientAltitudes,
+    usedClientAltitudesPartial: hasPartialAltitudes,
+  };
+}
+
+export function processRouteRequest(body: RequestBody): { error: string } | ProcessedRoute {
+  const {
+    points, workoutMode, intervalReps, intervalFastKm,
+    altitudes: bodyAltitudes,
+  } = body || {};
+
+  const pointError = validateRoutePoints(points);
+  if (pointError) return { error: pointError };
+  // 通过校验后 points 必为有效数组（上面已确认 Array.isArray 且长度 ≥ 2）
+  const validPoints = points as RoutePoint[];
+
+  const parsed = parseRequestParams(body);
+  if ('error' in parsed) return parsed;
+
+  const {
+    startDate, sportType: resolvedSportType, sportName: resolvedSportName, subSport,
+    weight, power, drift, targetAvgCadence, pace, hrMaxVal, hrRestVal, laps, variant,
+    elapsedExtra, deviceManufacturer, deviceProduct,
+  } = parsed;
+
+  const basePoints = buildClosedBasePoints(validPoints);
+  const baseAltitudes = resolveBaseAltitudes(bodyAltitudes, validPoints.length, basePoints.length);
   const allPoints: RoutePoint[] = [];
   const expandedAltitudes: Array<number | null> | null = baseAltitudes ? [] : null;
   const validAltitudeCount = baseAltitudes
@@ -648,6 +854,12 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     return { error: '轨迹距离为 0，请绘制更长的路线' };
   }
 
+  // FIT 的 total_elapsed_time / total_timer_time 为 uint32 毫秒（上限约 49.7 天）。
+  // 训练总时长为 totalDist/1000 × pace + elapsedExtra，超限前直接拒绝，避免 uint32 静默截断。
+  if (Math.round((((totalDist / 1000) * pace) + elapsedExtra) * 1000) > MAX_FIT_ELAPSED_MS - 1000) {
+    return { error: '训练总时长超出 FIT 上限（约 49.7 天），请缩短路线、减少圈数或提高配速' };
+  }
+
   const calories = computeCalories(weight, totalDist, pace);
 
   const { samples, totalDurationSec } = computeSamples(
@@ -656,39 +868,21 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     resolvedSportType === 'walking',
   );
 
-  const { totalAscent, totalDescent, avgStrideLength } = computeElevationSummary(samples);
-
-  let maxElevation = -Infinity;
-  let minElevation = Infinity;
-  for (const s of samples) {
-    if (s.altitude > maxElevation) maxElevation = s.altitude;
-    if (s.altitude < minElevation) minElevation = s.altitude;
-  }
-  if (!Number.isFinite(maxElevation)) maxElevation = 0;
-  if (!Number.isFinite(minElevation)) minElevation = 0;
-
-  let hrSum = 0;
-  for (const s of samples) hrSum += s.heartRate;
-  const avgHr = samples.length > 0 ? hrSum / samples.length : hrRestVal;
-  const trainingLoad = Math.round(
-    (totalDurationSec / 60) *
-    ((avgHr - hrRestVal) / Math.max(1, (hrMaxVal - hrRestVal))) *
-    100 / 10
-  );
+  const stats = computeSampleStats(samples, hrRestVal, hrMaxVal, totalDurationSec);
 
   return {
     startDate, totalDist, pace, hrRestVal, hrMaxVal,
     targetAvgCadence, weight, power, calories, laps, variant, samples, totalDurationSec,
-    totalAscent, totalDescent, avgStrideLength,
+    totalAscent: stats.totalAscent, totalDescent: stats.totalDescent, avgStrideLength: stats.avgStrideLength,
     sportType: resolvedSportType,
     sportName: resolvedSportName,
     subSport,
-    deviceManufacturer: device?.manufacturer,
-    deviceProduct: device?.product,
+    deviceManufacturer,
+    deviceProduct,
     elapsedExtraSeconds: elapsedExtra,
-    trainingLoad,
-    maxElevation,
-    minElevation,
+    trainingLoad: stats.trainingLoad,
+    maxElevation: stats.maxElevation,
+    minElevation: stats.minElevation,
     usedClientAltitudes,
     usedClientAltitudesPartial: hasPartialAltitudes,
   };
@@ -718,7 +912,7 @@ export function applySensorOptions(samples: SampleData[], options?: {
 
 /**
  * 按厂商生成更自然的 32 位序列号。
- * Garmin 常见 10 位、3 开头；开发/未知厂商用随机高位，避免清一色 0x1xxxxxxx 指纹。
+ * Garmin 常见 10 位、3 开头；开发/未知厂商用随机高位，避免清一色 0x1xxxxxxx 特征。
  */
 function generateSerialNumber(manufacturerId: number | undefined): number {
   if (manufacturerId === 1) {
@@ -743,7 +937,7 @@ export function generateFitFile(
   elevationInfo?: { source: string; status: string } | null
 ): Response {
   const {
-    startDate, totalDist, totalDurationSec, hrMaxVal, variant, samples, calories,
+    startDate, totalDist, totalDurationSec, hrRestVal, hrMaxVal, variant, samples, calories,
     sportType, sportName, subSport, deviceManufacturer, deviceProduct, elapsedExtraSeconds,
   } = result;
   const fitSportName = sportType === 'walking' ? 'walking' : 'running';
@@ -772,7 +966,7 @@ export function generateFitFile(
   if (includeAltitude && altitudes != null && altitudes.length === samples.length) {
     sessionSamples = samples.map((s, i) => ({ ...s, altitude: altitudes[i] }));
   }
-  const elevationSummary = computeElevationSummary(sessionSamples);
+  const elevationSummary = computeSampleStats(sessionSamples, hrRestVal, hrMaxVal, totalDurationSec);
 
   const sessionEnd = new Date(startDate.getTime() + sessionElapsed * 1000);
 
@@ -806,7 +1000,8 @@ export function generateFitFile(
     if (includePower) record.power = s.power;
     if (includeAltitude) record.altitude = s.altitude;
     if (includeGaitData) {
-      record.stanceTime = s.groundTime;
+      // stance_time 传入毫秒值即可（fit.ts 会按 scale 10 编码为 ms × 10）
+      record.stanceTime = Math.round(s.groundTime);
       // 由步态周期耦合生成，仅做宽松保护，不再硬 clamp 40-70
       record.stanceTimePercent = clamp((s.groundTime / Math.max(1, s.groundTime + s.flightTime)) * 100, 50, 85);
       record.verticalOscillation = s.verticalOscillation;
@@ -866,6 +1061,7 @@ export function generateFitFile(
   const headers: Record<string, string> = {
     'Content-Type': 'application/vnd.ant.fit',
     'Content-Disposition': `attachment; filename=${filenamePrefix}${variant}.fit`,
+    'Cache-Control': 'no-store',
   };
   if (elevationInfo) {
     headers['X-Elevation-Source'] = elevationInfo.source;

@@ -1,10 +1,11 @@
-import { processRouteRequest, generateFitFile } from './lib';
+import { processRouteRequest, generateFitFile, applySensorOptions, computeSampleStats, buildSyntheticProcessedRoute } from './lib';
 import type { RequestBody, ProcessedRoute } from './lib';
 import { exportActivityFile } from './exporters';
 import type { ExportContext } from './exporters';
 
 const EXPORT_FORMATS = ['fit', 'tcx', 'gpx', 'csv'];
-const MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;
+// 16MB：普通请求很小，但生成接口允许回传预览快照（最多 50000 个样本，约数 MB）
+const MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
 
 export function validateJsonRequest(
   contentType: string | null | undefined,
@@ -21,6 +22,29 @@ export function validateJsonRequest(
   return null;
 }
 
+export type JsonParseResult =
+  | { ok: true; body: RequestBody }
+  | { ok: false; response: Response };
+
+/**
+ * 读取请求体后按实际字节数校验上限，并解析 JSON。
+ * 弥补仅依赖 Content-Length 头的漏洞（chunked 或无长度头的请求可绕过旧检查）。
+ */
+export function parseJsonBody(rawText: string): JsonParseResult {
+  const byteLength = new TextEncoder().encode(rawText).byteLength;
+  if (byteLength > MAX_REQUEST_BODY_BYTES) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: `请求体超过大小上限（${Math.round(MAX_REQUEST_BODY_BYTES / 1024 / 1024)}MB）` }, 413),
+    };
+  }
+  try {
+    return { ok: true, body: JSON.parse(rawText) as RequestBody };
+  } catch {
+    return { ok: false, response: jsonResponse({ error: '请求体不是合法的 JSON' }, 400) };
+  }
+}
+
 const ELEVATION_SOURCE_NAMES: Record<string, string> = {
   'open-elevation': 'Open-Elevation',
   'opentopodata': 'OpenTopoData SRTM90',
@@ -33,7 +57,7 @@ const ELEVATION_SOURCE_NAMES: Record<string, string> = {
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -75,64 +99,6 @@ function elevationInfoFor(
   };
 }
 
-function statsFromSamples(
-  samples: Array<{ altitude: number; heartRate: number; cadence: number; power: number; speed: number }>,
-  hrRestVal: number,
-  hrMaxVal: number,
-  totalDurationSec: number
-) {
-  let totalAscent = 0;
-  let totalDescent = 0;
-  let maxElevation = -Infinity;
-  let minElevation = Infinity;
-  let hrSum = 0;
-  let hrCount = 0;
-  let cadSum = 0;
-  let cadCount = 0;
-  let powerSum = 0;
-  let powerCount = 0;
-  let strideSum = 0;
-  let strideCount = 0;
-
-  for (let i = 1; i < samples.length; i++) {
-    const diff = samples[i].altitude - samples[i - 1].altitude;
-    if (diff > 0) totalAscent += diff;
-    else totalDescent += Math.abs(diff);
-  }
-
-  for (const s of samples) {
-    if (s.altitude > maxElevation) maxElevation = s.altitude;
-    if (s.altitude < minElevation) minElevation = s.altitude;
-    if (s.heartRate > 0) { hrSum += s.heartRate; hrCount++; }
-    if (s.cadence > 0) { cadSum += s.cadence; cadCount++; }
-    if (s.power > 0) { powerSum += s.power; powerCount++; }
-    if (s.speed > 0 && s.cadence > 0) {
-      strideSum += (s.speed * 60) / s.cadence;
-      strideCount++;
-    }
-  }
-
-  const avgHeartRate = hrCount > 0 ? Math.round(hrSum / hrCount) : 0;
-  const avgHrFloat = hrCount > 0 ? hrSum / hrCount : hrRestVal;
-  const trainingLoad = Math.round(
-    (totalDurationSec / 60) *
-    ((avgHrFloat - hrRestVal) / Math.max(1, hrMaxVal - hrRestVal)) *
-    100 / 10
-  );
-
-  return {
-    totalAscent,
-    totalDescent,
-    maxElevation: Number.isFinite(maxElevation) ? maxElevation : 0,
-    minElevation: Number.isFinite(minElevation) ? minElevation : 0,
-    avgHeartRate,
-    avgCadence: cadCount > 0 ? Math.round(cadSum / cadCount) : 0,
-    avgPower: powerCount > 0 ? Math.round(powerSum / powerCount) : 0,
-    avgStrideLength: strideCount > 0 ? strideSum / strideCount : 0,
-    trainingLoad,
-  };
-}
-
 export async function handlePreview(body: RequestBody): Promise<Response> {
   try {
     const result = processRouteRequest(body || {});
@@ -146,17 +112,8 @@ export async function handlePreview(body: RequestBody): Promise<Response> {
     const includeGaitData = body.includeGaitData !== false;
 
     // 传感器开关清零（海拔已在 processRouteRequest 中写入 samples）
-    const samples = result.samples.map((s) => ({
-      ...s,
-      heartRate: includeHeartRate ? s.heartRate : 0,
-      power: includePower ? s.power : 0,
-      cadence: includeCadence ? s.cadence : 0,
-      groundTime: includeGaitData ? s.groundTime : 0,
-      flightTime: includeGaitData ? s.flightTime : 0,
-      verticalOscillation: includeGaitData ? s.verticalOscillation : 0,
-    }));
-
-    const stats = statsFromSamples(samples, result.hrRestVal, result.hrMaxVal, result.totalDurationSec);
+    const samples = applySensorOptions(result.samples, { includeHeartRate, includePower, includeCadence, includeGaitData });
+    const stats = computeSampleStats(samples, result.hrRestVal, result.hrMaxVal, result.totalDurationSec);
 
     return jsonResponse({
       totalDistanceMeters: result.totalDist,
@@ -181,7 +138,18 @@ export async function handlePreview(body: RequestBody): Promise<Response> {
 
 export async function handleGenerate(body: RequestBody): Promise<Response> {
   try {
-    const result = processRouteRequest(body || {});
+    // 优先复用预览快照（跳过全量重算）；快照缺失/校验失败时回退全量计算，行为与旧版一致
+    let result: { error: string } | ProcessedRoute;
+    if (body?.preview) {
+      const snapshot = buildSyntheticProcessedRoute(body);
+      result = snapshot;
+      if ('error' in snapshot) {
+        console.warn('[FitTool] preview snapshot rejected, falling back to full compute:', snapshot.error);
+        result = processRouteRequest(body || {});
+      }
+    } else {
+      result = processRouteRequest(body || {});
+    }
     if ('error' in result) return jsonResponse({ error: result.error }, 400);
 
     const sensorOptions = {
@@ -209,6 +177,7 @@ export async function handleGenerate(body: RequestBody): Promise<Response> {
     const headers: Record<string, string> = {
       'Content-Type': exported.contentType,
       'Content-Disposition': `attachment; filename=${exported.filename}`,
+      'Cache-Control': 'no-store',
     };
     if (elevation) {
       headers['X-Elevation-Source'] = elevation.source;

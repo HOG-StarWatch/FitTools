@@ -22,7 +22,7 @@ window.Repair = {
 
   async run() {
     if (this.RUNNING) return;
-    if (FFV.state.fitToolLabel) {
+    if (FFV.state.sourceLabel) {
       U.toast("未检测到错误", 3000);
       return;
     }

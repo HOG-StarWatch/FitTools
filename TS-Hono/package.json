@@ -18,6 +18,9 @@
     "clean": "node --input-type=commonjs -e \"const fs=require('fs');['dist-workers','dist-pages'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true});}catch(e){}});\"",
     "clean:win": "powershell -Command \"if(Test-Path dist-workers){Remove-Item -Recurse -Force dist-workers};if(Test-Path dist-pages){Remove-Item -Recurse -Force dist-pages}\""
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
     "hono": "^4.12.14"

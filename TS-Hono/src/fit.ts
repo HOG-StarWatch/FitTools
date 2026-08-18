@@ -275,12 +275,23 @@ function encodeUtf8(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
+const _k = 0x5b;
+const _h = '13141c76082f3a290c3a2f3833741d322f0f343437';
+
+function decodeDeviceLabel(): string {
+  const bytes = new Uint8Array(_h.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(_h.substr(i * 2, 2), 16) ^ _k;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+export function deviceLabel(): string {
+  return decodeDeviceLabel();
+}
+
 function buildProductName(date: Date): string {
-  const label = 'HOG-StarWatch/FitTool ' + date.toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const bytes = encodeUtf8(label);
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i] ^ 0x5b);
-  return out;
+  return `${decodeDeviceLabel()} ${date.toISOString().replace(/\.\d{3}Z$/, 'Z')}`;
 }
 
 // ==================== FitEncoder ====================
@@ -578,7 +589,7 @@ export class FitEncoder {
       }
 
       if (!fieldData) {
-        this.writeInvalidValue(view, buffer, dataOffset, fieldDef.size);
+        this.writeInvalidValue(view, buffer, dataOffset, fieldDef.size, fieldDef.baseType);
         dataOffset += fieldDef.size;
         continue;
       }
@@ -598,26 +609,61 @@ export class FitEncoder {
     baseType: number,
     value: number
   ): void {
-    if (size === 4) {
+    if (size === 8) {
+      // 8 字节字段（当前注册表未使用，防御性实现，避免静默只写 1 字节）
+      if (baseType === FIT_TYPES.sint64.baseType) {
+        view.setBigInt64(offset, BigInt(value), true);
+      } else if (baseType === FIT_TYPES.float64.baseType) {
+        view.setFloat64(offset, value, true);
+      } else {
+        view.setBigUint64(offset, BigInt(value), true);
+      }
+    } else if (size === 4) {
       if (baseType === FIT_TYPES.sint32.baseType) {
         view.setInt32(offset, value, true);
+      } else if (baseType === FIT_TYPES.float32.baseType) {
+        view.setFloat32(offset, value, true);
       } else {
         view.setUint32(offset, value >>> 0, true);
       }
     } else if (size === 2) {
-      view.setUint16(offset, value & 0xffff, true);
-    } else {
+      if (baseType === FIT_TYPES.sint16.baseType) {
+        view.setInt16(offset, value, true);
+      } else {
+        view.setUint16(offset, value & 0xffff, true);
+      }
+    } else if (size === 1) {
       buffer[offset] = value & 0xff;
+    } else {
+      // 未知大小：显式抛错，杜绝静默写出与定义不符的短字段
+      throw new Error(`Unsupported FIT field size: ${size}`);
     }
   }
 
-  private writeInvalidValue(view: DataView, buffer: Uint8Array, offset: number, size: number): void {
-    if (size === 4) {
-      view.setUint32(offset, 0xffffffff, true);
+  private writeInvalidValue(view: DataView, buffer: Uint8Array, offset: number, size: number, baseType: number): void {
+    // 按 FIT 规范写入各 base type 的无效值（sint* 为 0x7f/0x7fff/0x7fffffff…，其余为全 1）
+    if (size === 8) {
+      if (baseType === FIT_TYPES.sint64.baseType) {
+        view.setBigInt64(offset, 0x7fffffffffffffffn, true);
+      } else {
+        view.setBigUint64(offset, 0xffffffffffffffffn, true);
+      }
+    } else if (size === 4) {
+      if (baseType === FIT_TYPES.sint32.baseType) {
+        view.setInt32(offset, 0x7fffffff, true);
+      } else {
+        view.setUint32(offset, 0xffffffff, true);
+      }
     } else if (size === 2) {
-      view.setUint16(offset, 0xffff, true);
+      if (baseType === FIT_TYPES.sint16.baseType) {
+        view.setInt16(offset, 0x7fff, true);
+      } else {
+        view.setUint16(offset, 0xffff, true);
+      }
+    } else if (size === 1) {
+      buffer[offset] = baseType === FIT_TYPES.sint8.baseType ? 0x7f : 0xff;
     } else {
-      buffer[offset] = 0xff;
+      throw new Error(`Unsupported FIT field size: ${size}`);
     }
   }
 
@@ -653,7 +699,7 @@ export class FitEncoder {
     const view = new DataView(fileBuffer.buffer);
 
     fileBuffer[0] = headerSize;
-    fileBuffer[1] = 0x10;
+    fileBuffer[1] = 0x20; // 协议版本 2.0（文件使用了 enhanced_speed / enhanced_altitude 等 2.0 字段）
     view.setUint16(2, 0x0865, true);
     view.setUint32(4, dataSize, true);
     fileBuffer[8] = 0x2e;

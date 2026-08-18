@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import * as esbuild from 'esbuild';
 import { copyFileSync, mkdirSync, existsSync, readdirSync, statSync, writeFileSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
@@ -54,15 +55,25 @@ async function buildForPages() {
   writeFileSync(join(outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2));
 }
 
-function copyDirRecursive(src: string, dest: string): void {
+// 发布时排除 viewer 的内部开发文件（自带 package.json / 构建脚本 / gitignore），避免无关文件被公开托管
+const SKIP_IN_COPY = new Set([
+  'viewer/package.json',
+  'viewer/package-lock.json',
+  'viewer/.gitignore',
+  'viewer/scripts',
+]);
+
+function copyDirRecursive(src: string, dest: string, rel = ''): void {
   if (!existsSync(src)) return;
   mkdirSync(dest, { recursive: true });
   const entries = readdirSync(src);
   for (const entry of entries) {
     const srcPath = join(src, entry);
+    const relPath = rel ? `${rel}/${entry}` : entry;
+    if (SKIP_IN_COPY.has(relPath)) continue;
     const destPath = join(dest, entry);
     if (statSync(srcPath).isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
+      copyDirRecursive(srcPath, destPath, relPath);
     } else {
       copyFileSync(srcPath, destPath);
     }

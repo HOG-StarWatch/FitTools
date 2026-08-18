@@ -2131,6 +2131,21 @@ document.getElementById("intervalExampleSelect")?.addEventListener("change", (e)
 
 // ==================== FIT文件生成模块 ====================
 
+// 最近一次 /api/preview 的成功响应与参数比对：参数未变时生成请求直接复用预览样本（跳过服务端全量重算）
+let lastPreview = null;
+
+// 预览/生成共用的核心请求参数（键顺序固定，用于参数比对）
+function coreRequestParams({ paceSecondsPerKm, hrRest, hrMax, lapCount, weightKg, powerFactor, gpsDrift, avgCadence, elevationSource, includeHeartRate, includePower, includeCadence, includeGaitData, shared, points }) {
+  return {
+    paceSecondsPerKm, hrRest, hrMax, lapCount, weightKg, powerFactor, gpsDrift, avgCadence,
+    elevationSource, includeHeartRate, includePower, includeCadence, includeGaitData,
+    sportType: shared.sportType, heightCm: shared.heightCm, deviceType: shared.deviceType,
+    sportName: shared.sportName, fitSubSport: shared.fitSubSport, customSubSport: shared.customSubSport,
+    workoutMode: shared.workoutMode, intervalReps: shared.intervalReps, intervalFastKm: shared.intervalFastKm,
+    elapsedExtraSeconds: shared.elapsedExtraSeconds, points,
+  };
+}
+
 async function generateFit() {
   if (routePoints.length < 2) {
     updateMessage("请至少在地图上选择两个点形成轨迹", true);
@@ -2215,30 +2230,25 @@ async function generateFit() {
       const includeGaitData = document.getElementById("includeGaitData")?.checked ?? true;
       
       try {
+        const core = coreRequestParams({
+          paceSecondsPerKm: filePaceSecondsPerKm, hrRest, hrMax, lapCount, weightKg, powerFactor, gpsDrift, avgCadence,
+          elevationSource, includeHeartRate, includePower, includeCadence, includeGaitData, shared, points: activePoints,
+        });
+        const payload = {
+          startTime,
+          ...core,
+          altitudes: elevation.altitudes,
+          variantIndex: i + 1,
+          format: shared.format
+        };
+        // 参数与最近一次预览一致且样本量适中（≤20000）时复用其样本，跳过服务端全量重算（校验失败服务端会自动回退）
+        if (lastPreview && JSON.stringify(core) === lastPreview.fingerprint && lastPreview.data.samples.length <= 20000) {
+          payload.preview = lastPreview.data;
+        }
         const res = await fetch("/api/generate-fit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            startTime,
-            points: activePoints,
-            paceSecondsPerKm: filePaceSecondsPerKm,
-            hrRest, hrMax, lapCount, variantIndex: i + 1,
-            weightKg, powerFactor, gpsDrift, avgCadence,
-            elevationSource,
-            altitudes: elevation.altitudes,
-            includeHeartRate, includePower, includeCadence, includeGaitData,
-            sportType: shared.sportType,
-            heightCm: shared.heightCm,
-            deviceType: shared.deviceType,
-            sportName: shared.sportName,
-            fitSubSport: shared.fitSubSport,
-            customSubSport: shared.customSubSport,
-            workoutMode: shared.workoutMode,
-            intervalReps: shared.intervalReps,
-            intervalFastKm: shared.intervalFastKm,
-            elapsedExtraSeconds: shared.elapsedExtraSeconds,
-            format: shared.format
-          })
+          body: JSON.stringify(payload)
         });
         
         if (!res.ok) {
@@ -2974,28 +2984,14 @@ async function previewActivity() {
   try {
     const activePoints = getActivePoints();
     const elevation = await fetchAltitudesClient(activePoints, elevationSource);
+    const core = coreRequestParams({
+      paceSecondsPerKm, hrRest, hrMax, lapCount, weightKg, powerFactor, gpsDrift, avgCadence,
+      elevationSource, includeHeartRate, includePower, includeCadence, includeGaitData, shared, points: activePoints,
+    });
     const res = await fetch("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        startTime,
-        points: activePoints,
-        paceSecondsPerKm, hrRest, hrMax, lapCount,
-        weightKg, powerFactor, gpsDrift, avgCadence,
-        elevationSource,
-        altitudes: elevation.altitudes,
-        includeHeartRate, includePower, includeCadence, includeGaitData,
-        sportType: shared.sportType,
-        heightCm: shared.heightCm,
-        sportName: shared.sportName,
-        fitSubSport: shared.fitSubSport,
-        customSubSport: shared.customSubSport,
-        workoutMode: shared.workoutMode,
-        intervalReps: shared.intervalReps,
-        intervalFastKm: shared.intervalFastKm,
-        elapsedExtraSeconds: shared.elapsedExtraSeconds,
-        format: shared.format
-      })
+      body: JSON.stringify({ startTime, ...core, altitudes: elevation.altitudes, format: shared.format })
     });
     
     if (!res.ok) {
@@ -3005,6 +3001,8 @@ async function previewActivity() {
     }
     
     const data = await res.json();
+    // 记录快照：生成时参数未变则直接复用样本（服务端校验后跳过全量重算）
+    lastPreview = { fingerprint: JSON.stringify(core), data };
     renderPreviewCharts(data);
     setElevationStatus(data.elevation);
     

@@ -1,7 +1,7 @@
+/// <reference types="@cloudflare/workers-types" />
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import type { RequestBody } from '../../src/lib';
-import { handlePreview, handleGenerate, validateJsonRequest } from '../../src/handlers';
+import { createCorsMiddleware } from '../../src/cors';
+import { handlePreview, handleGenerate, validateJsonRequest, parseJsonBody } from '../../src/handlers';
 import { version } from '../../package.json';
 
 type Bindings = {
@@ -10,17 +10,7 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.use('/api/*', async (c, next) => {
-  const origins = c.env.ALLOWED_ORIGINS;
-  if (origins) {
-    const originList = origins.split(',').map(s => s.trim());
-    if (originList.includes('*')) {
-      return cors()(c, next);
-    }
-    return cors({ origin: originList, allowMethods: ['POST', 'OPTIONS', 'GET'], allowHeaders: ['Content-Type'], maxAge: 86400 })(c, next);
-  }
-  await next();
-});
+app.use('/api/*', createCorsMiddleware((c) => (c.env as { ALLOWED_ORIGINS?: string }).ALLOWED_ORIGINS));
 
 app.get('/api/status', async (c) => {
   return c.json({
@@ -35,7 +25,10 @@ app.get('/api/status', async (c) => {
 app.post('/api/preview', async (c) => {
   const invalid = validateJsonRequest(c.req.header('Content-Type'), c.req.header('Content-Length'));
   if (invalid) return invalid;
-  const body = await c.req.json<RequestBody>().catch(() => ({}));
+  const raw = await c.req.text();
+  const parsed = parseJsonBody(raw);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
   const res = await handlePreview(body);
   return new Response(res.body, {
     status: res.status,
@@ -46,7 +39,10 @@ app.post('/api/preview', async (c) => {
 app.post('/api/generate-fit', async (c) => {
   const invalid = validateJsonRequest(c.req.header('Content-Type'), c.req.header('Content-Length'));
   if (invalid) return invalid;
-  const body = await c.req.json<RequestBody>().catch(() => ({}));
+  const raw = await c.req.text();
+  const parsed = parseJsonBody(raw);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
   return handleGenerate(body);
 });
 
