@@ -146,6 +146,13 @@ function buildClosedBasePoints(points: RoutePoint[] | undefined): RoutePoint[] {
   return [...points, { lat: first.lat, lng: first.lng }];
 }
 
+function hasAutoClosure(basePoints: RoutePoint[]): boolean {
+  if (basePoints.length < 2) return false;
+  const first = basePoints[0];
+  const last = basePoints[basePoints.length - 1];
+  return last.lat === first.lat && last.lng === first.lng;
+}
+
 function resolveBaseAltitudes(
   altitudes: Array<number | null> | null | undefined,
   inputPointCount: number,
@@ -805,18 +812,23 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     return { error: `展开后的轨迹点数量超过上限 (${MAX_EXPANDED_POINTS})，请减少圈数或轨迹点` };
   }
 
+  const lastIndex = basePoints.length - 1;
+  const autoClosure = hasAutoClosure(basePoints);
+  const isClosureIdx = (j: number) => autoClosure && (j === 0 || j === lastIndex);
+
   for (let i = 0; i < fullLaps; i++) {
     let offsetLatMeters = 0;
     let offsetLonMeters = 0;
     if (shouldApplyDrift) {
-      const radiusMeters = drift * 10;
+      const radiusMeters = drift;
       const angle = Math.random() * Math.PI * 2;
       offsetLatMeters = radiusMeters * Math.cos(angle);
       offsetLonMeters = radiusMeters * Math.sin(angle);
     }
     for (let j = 0; j < basePoints.length; j++) {
       const p = basePoints[j];
-      allPoints.push(shouldApplyDrift ? offsetPointMeters(p, offsetLatMeters, offsetLonMeters) : p);
+      const applyDrift = shouldApplyDrift && !isClosureIdx(j);
+      allPoints.push(applyDrift ? offsetPointMeters(p, offsetLatMeters, offsetLonMeters) : p);
       if (expandedAltitudes) expandedAltitudes.push(baseAltitudes![j]);
     }
   }
@@ -825,16 +837,17 @@ export function processRouteRequest(body: RequestBody): { error: string } | Proc
     let offsetLatMeters = 0;
     let offsetLonMeters = 0;
     if (shouldApplyDrift) {
-      const radiusMeters = drift * 10;
+      const radiusMeters = drift;
       const angle = Math.random() * Math.PI * 2;
       offsetLatMeters = radiusMeters * Math.cos(angle);
       offsetLonMeters = radiusMeters * Math.sin(angle);
     }
     const partialPointsCount = Math.floor(basePoints.length * partialLap);
-    for (let i = 0; i < partialPointsCount; i++) {
-      const p = basePoints[i];
-      allPoints.push(shouldApplyDrift ? offsetPointMeters(p, offsetLatMeters, offsetLonMeters) : p);
-      if (expandedAltitudes) expandedAltitudes.push(baseAltitudes![i]);
+    for (let j = 0; j < partialPointsCount; j++) {
+      const p = basePoints[j];
+      const applyDrift = shouldApplyDrift && !isClosureIdx(j);
+      allPoints.push(applyDrift ? offsetPointMeters(p, offsetLatMeters, offsetLonMeters) : p);
+      if (expandedAltitudes) expandedAltitudes.push(baseAltitudes![j]);
     }
   }
 
