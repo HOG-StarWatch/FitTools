@@ -260,7 +260,7 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 
 ---
 
-## 四、常见部署问题
+## 三、常见部署问题
 
 ### Q: 部署后访问根路径 404
 
@@ -279,12 +279,17 @@ ALLOWED_ORIGINS = "https://your-domain.com"
 ```
 TS-Hono/
 ├── src/
-│   ├── fit.ts          # FIT 文件编码器
-│   ├── lib.ts          # 业务逻辑和数据生成
-│   ├── handlers.ts     # /api/preview、/api/generate-* 共享处理器（Node / Workers / Pages 通用）
-│   ├── device.ts       # 设备品牌映射（官方 4 + 社区 3 + Developer 255，前端自定义数值直通）
-│   ├── exporters.ts    # TCX / GPX / CSV 导出与文件分发
-│   ├── workers.ts      # Workers 入口
+│   ├── fit.ts              # FIT 文件编码器
+│   ├── lib.ts              # 业务逻辑和数据生成
+│   ├── handlers.ts         # /api/preview、/api/generate-* 共享处理器（Node / Workers / Pages 通用）
+│   ├── device.ts           # 设备品牌映射（官方 5 + 社区 3 + Developer 255，前端自定义数值直通）
+│   ├── exporters.ts        # TCX / GPX / CSV 导出与文件分发
+│   ├── elevation.ts        # 海拔源枚举与元数据
+│   ├── sensor-options.ts   # 传感器开关（心率/功率/步频/步态）参数处理
+│   ├── cors.ts             # CORS 中间件
+│   ├── http.ts             # 请求体解析 / 校验辅助
+│   ├── api.ts              # 共享路由工厂 createApp（业务路由集中处）
+│   ├── workers.ts          # Workers 入口（装配 createApp）
 ├── functions/
 │   └── api/
 │       └── [[catchall]].ts  # Pages Functions 入口
@@ -293,7 +298,10 @@ TS-Hono/
 │   ├── main.js         # 前端逻辑（含浏览器端海拔获取与 CORS 代理）
 │   ├── sponsor.png     # 赞赏码
 │   ├── style.css       # 样式
-│   └── HOG_S_64.png   # 图标
+│   ├── theme.css       # 主题样式
+│   ├── HOG_S_64.png    # 图标
+│   ├── FitAnnouncement.txt
+│   └── viewer/         # 浏览器端 FIT 查看器（独立静态站点）
 ├── build.pages.ts      # Pages 构建脚本
 ├── wrangler.toml      # Pages 配置文件
 ├── wrangler.workers.toml # Workers 配置文件

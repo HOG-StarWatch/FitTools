@@ -1,11 +1,15 @@
-import { processRouteRequest, generateFitFile, applySensorOptions, computeSampleStats, buildSyntheticProcessedRoute } from './lib';
+import { processRouteRequest, buildSyntheticProcessedRoute, computeSampleStats, applySensorOptions, generateFitFile } from './lib';
 import type { RequestBody, ProcessedRoute } from './lib';
 import { exportActivityFile } from './exporters';
-import type { ExportContext } from './exporters';
+import type { ExportContext, ExportFormat } from './exporters';
+import { jsonResponse, downloadResponse } from './http';
+import { buildElevationInfo, deriveAltitudeFlags } from './elevation';
+import { resolveSensorOptions } from './sensor-options';
 
-const EXPORT_FORMATS = ['fit', 'tcx', 'gpx', 'csv'];
-// 16MB：普通请求很小，但生成接口允许回传预览快照（最多 50000 个样本，约数 MB）
+const EXPORT_FORMATS: readonly ExportFormat[] = ['fit', 'tcx', 'gpx', 'csv'];
+// 普通请求很小，但生成接口允许回传预览快照（最多 50000 个样本，约数 MB）
 const MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
+const MAX_REQUEST_BODY_MB = Math.round(MAX_REQUEST_BODY_BYTES / 1024 / 1024);
 
 export function validateJsonRequest(
   contentType: string | null | undefined,
@@ -17,7 +21,7 @@ export function validateJsonRequest(
   }
   const len = Number(contentLength || 0);
   if (Number.isFinite(len) && len > MAX_REQUEST_BODY_BYTES) {
-    return jsonResponse({ error: `请求体超过大小上限（${Math.round(MAX_REQUEST_BODY_BYTES / 1024 / 1024)}MB）` }, 413);
+    return jsonResponse({ error: `请求体超过大小上限（${MAX_REQUEST_BODY_MB}MB）` }, 413);
   }
   return null;
 }
@@ -33,10 +37,7 @@ export type JsonParseResult =
 export function parseJsonBody(rawText: string): JsonParseResult {
   const byteLength = new TextEncoder().encode(rawText).byteLength;
   if (byteLength > MAX_REQUEST_BODY_BYTES) {
-    return {
-      ok: false,
-      response: jsonResponse({ error: `请求体超过大小上限（${Math.round(MAX_REQUEST_BODY_BYTES / 1024 / 1024)}MB）` }, 413),
-    };
+    return { ok: false, response: jsonResponse({ error: `请求体超过大小上限（${MAX_REQUEST_BODY_MB}MB）` }, 413) };
   }
   try {
     return { ok: true, body: JSON.parse(rawText) as RequestBody };
@@ -45,58 +46,8 @@ export function parseJsonBody(rawText: string): JsonParseResult {
   }
 }
 
-const ELEVATION_SOURCE_NAMES: Record<string, string> = {
-  'open-elevation': 'Open-Elevation',
-  'opentopodata': 'OpenTopoData SRTM90',
-  'opentopodata-srtm30m': 'OpenTopoData SRTM30',
-  'opentopodata-aster30m': 'OpenTopoData ASTER30',
-  'opentopodata-eudem25m': 'OpenTopoData EUDEM25',
-  'open-meteo': 'Open-Meteo',
-};
-
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
-}
-
-function elevationInfoFor(
-  body: RequestBody,
-  result: ProcessedRoute
-): { source: string; status: string; message: string } {
-  const source = typeof body?.elevationSource === 'string' && body.elevationSource.trim()
-    ? body.elevationSource.trim().toLowerCase()
-    : 'open-elevation';
-  const sourceName = ELEVATION_SOURCE_NAMES[source] || source;
-
-  if (source === 'none') {
-    return { source, status: 'none', message: '不写入海拔（FIT 海拔字段留空）' };
-  }
-  if (source === 'off') {
-    return { source, status: 'off', message: '模拟海拔（离线生成）' };
-  }
-  // 以 processRouteRequest 实际应用结果为准，避免口径不一致
-  if (result.usedClientAltitudes) {
-    if (result.usedClientAltitudesPartial) {
-      return {
-        source,
-        status: 'partial',
-        message: `已获取部分真实海拔（${sourceName}），其余采样点已回退模拟海拔`,
-      };
-    }
-    const altitudeCount = Array.isArray(body?.altitudes) ? body.altitudes.length : 0;
-    return {
-      source,
-      status: 'live',
-      message: `已获取真实海拔（${sourceName}，${altitudeCount} 个采样点）`,
-    };
-  }
-  return {
-    source,
-    status: 'fallback',
-    message: `客户端未提供有效真实海拔（${sourceName}），已回退模拟海拔`,
-  };
+function isExportFormat(format: unknown): format is ExportFormat {
+  return typeof format === 'string' && (EXPORT_FORMATS as readonly string[]).includes(format);
 }
 
 export async function handlePreview(body: RequestBody): Promise<Response> {
@@ -104,15 +55,10 @@ export async function handlePreview(body: RequestBody): Promise<Response> {
     const result = processRouteRequest(body || {});
     if ('error' in result) return jsonResponse({ error: result.error }, 400);
 
-    // 海拔由浏览器端获取并通过 body.altitudes 传入，服务端不再发起第三方请求
-    const elevation = elevationInfoFor(body, result);
-    const includeHeartRate = body.includeHeartRate !== false;
-    const includePower = body.includePower !== false;
-    const includeCadence = body.includeCadence !== false;
-    const includeGaitData = body.includeGaitData !== false;
-
-    // 传感器开关清零（海拔已在 processRouteRequest 中写入 samples）
-    const samples = applySensorOptions(result.samples, { includeHeartRate, includePower, includeCadence, includeGaitData });
+    const flags = deriveAltitudeFlags(body?.altitudes, body?.points?.length || 0, body?.points?.length || 0);
+    const elevation = buildElevationInfo(body, flags);
+    const sensorOptions = resolveSensorOptions(body, elevation);
+    const samples = applySensorOptions(result.samples, sensorOptions);
     const stats = computeSampleStats(samples, result.hrRestVal, result.hrMaxVal, result.totalDurationSec);
 
     return jsonResponse({
@@ -124,68 +70,52 @@ export async function handlePreview(body: RequestBody): Promise<Response> {
       sportType: result.sportType,
       sportName: result.sportName,
       stats,
-      elevation: {
-        source: elevation.source,
-        status: elevation.status,
-        message: elevation.message,
-      },
+      elevation: { source: elevation.source, status: elevation.status, message: elevation.message },
     });
   } catch (e) {
-    console.error(e);
+    console.error('[FitTool] preview failed:', e);
     return jsonResponse({ error: '生成预览失败' }, 500);
   }
 }
 
 export async function handleGenerate(body: RequestBody): Promise<Response> {
   try {
-    // 优先复用预览快照（跳过全量重算）；快照缺失/校验失败时回退全量计算，行为与旧版一致
+    // 优先复用预览快照（跳过全量重算）；校验失败时回退全量计算
     let result: { error: string } | ProcessedRoute;
     if (body?.preview) {
       const snapshot = buildSyntheticProcessedRoute(body);
-      result = snapshot;
       if ('error' in snapshot) {
         console.warn('[FitTool] preview snapshot rejected, falling back to full compute:', snapshot.error);
         result = processRouteRequest(body || {});
+      } else {
+        result = snapshot;
       }
     } else {
       result = processRouteRequest(body || {});
     }
     if ('error' in result) return jsonResponse({ error: result.error }, 400);
 
-    const sensorOptions = {
-      includeHeartRate: body.includeHeartRate !== false,
-      includePower: body.includePower !== false,
-      includeCadence: body.includeCadence !== false,
-      includeGaitData: body.includeGaitData !== false,
-    };
-
-    // 海拔由浏览器端获取并通过 body.altitudes 传入，服务端不再发起第三方请求
-    const elevation = elevationInfoFor(body, result);
-
-    const format = EXPORT_FORMATS.includes(String(body.format || 'fit')) ? String(body.format) : 'fit';
+    const flags = deriveAltitudeFlags(body?.altitudes, body?.points?.length || 0, body?.points?.length || 0);
+    const elevation = buildElevationInfo(body, flags);
+    const sensorOptions = resolveSensorOptions(body, elevation);
+    const format: ExportFormat = isExportFormat(body?.format) ? body.format : 'fit';
 
     if (format === 'fit') {
       return generateFitFile(result, sensorOptions, null, elevation);
     }
 
-    const exported = exportActivityFile(
-      format as 'tcx' | 'gpx' | 'csv',
-      result,
-      { sensorOptions, altitudes: null, elevationInfo: elevation } satisfies ExportContext
-    );
+    const exported = exportActivityFile(format, result, {
+      sensorOptions,
+      altitudes: null,
+      elevationInfo: elevation,
+    } satisfies ExportContext);
 
-    const headers: Record<string, string> = {
-      'Content-Type': exported.contentType,
-      'Content-Disposition': `attachment; filename=${exported.filename}`,
-      'Cache-Control': 'no-store',
-    };
-    if (elevation) {
-      headers['X-Elevation-Source'] = elevation.source;
-      headers['X-Elevation-Status'] = elevation.status;
-    }
-    return new Response(exported.body as string, { headers });
+    return downloadResponse(exported.body, exported.contentType, exported.filename, {
+      'X-Elevation-Source': elevation.source,
+      'X-Elevation-Status': elevation.status,
+    });
   } catch (e) {
-    console.error(e);
+    console.error('[FitTool] generate failed:', e);
     return jsonResponse({ error: '生成文件失败' }, 500);
   }
 }

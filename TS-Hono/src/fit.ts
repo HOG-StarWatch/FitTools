@@ -69,7 +69,8 @@ export interface ActivityData {
 
 // ==================== FIT Protocol Constants ====================
 
-const FIT_TYPES: Record<string, { baseType: number; size: number }> = {
+// FIT 基础类型：baseType 决定数据视图方式，size 决定字段字节数
+const FIT_TYPES = {
   enum: { baseType: 0x00, size: 1 },
   sint8: { baseType: 0x01, size: 1 },
   uint8: { baseType: 0x02, size: 1 },
@@ -87,9 +88,10 @@ const FIT_TYPES: Record<string, { baseType: number; size: number }> = {
   sint64: { baseType: 0x8E, size: 8 },
   uint64: { baseType: 0x8F, size: 8 },
   uint64z: { baseType: 0x90, size: 8 },
-};
+} as const;
 
-const MESG_NUM: Record<string, number> = {
+// FIT Global Message Numbers (Profile §4.1.2)
+const MESG_NUM = {
   file_id: 0,
   file_creator: 1,
   event: 21,
@@ -98,14 +100,9 @@ const MESG_NUM: Record<string, number> = {
   lap: 19,
   activity: 34,
   device_info: 23,
-};
+} as const;
 
-const EVENT_MAP: Record<string, number> = {
-  timer: 0,
-  workout: 3,
-  recreation: 4,
-};
-
+const EVENT_MAP: Record<string, number> = { timer: 0, workout: 3, recreation: 4 };
 const EVENT_TYPE_MAP: Record<string, number> = {
   start: 0,
   stop: 1,
@@ -116,6 +113,7 @@ const EVENT_TYPE_MAP: Record<string, number> = {
   stop_disable_all: 6,
 };
 
+// FIT Sport enum (Profile §4.1.4)
 const SPORT_MAP: Record<string, number> = {
   running: 1,
   walking: 11,
@@ -134,6 +132,7 @@ const SPORT_MAP: Record<string, number> = {
   gymnastics: 31,
 };
 
+// FIT Sub-Sport enum (Profile §4.1.5)，同时收录 camelCase 别名以兼容前端
 const SUB_SPORT_MAP: Record<string, number> = {
   generic: 0,
   treadmill: 1,
@@ -153,6 +152,8 @@ const SUB_SPORT_MAP: Record<string, number> = {
   indoor_walking: 27,
 };
 
+export const FIT_INVALID_SERIAL = 0xffffffff;
+
 function resolveSubSportId(subSport: string | number): number {
   if (typeof subSport === 'number') {
     return Number.isFinite(subSport) ? Math.max(0, Math.min(255, Math.floor(subSport))) : 0;
@@ -162,17 +163,16 @@ function resolveSubSportId(subSport: string | number): number {
 }
 
 // ==================== Field Definition Registry ====================
-// Maps field numbers to their FIT type and byte size, eliminating fragile hardcoded checks
+// 用字段号 → (size, baseType) 表取代硬编码偏移，消除易错的手写字节布局
 
 interface FieldDef {
   size: number;
   baseType: number;
 }
 
-// Timestamp field (field 253) - always uint32, 4 bytes
 const TIMESTAMP_FIELD: FieldDef = { size: 4, baseType: FIT_TYPES.uint32.baseType };
 
-// Field definitions for each message type
+// Profile §4.x.x — 各 message 的 field 编号与基础类型
 const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
   file_id: {
     0: { size: 1, baseType: FIT_TYPES.enum.baseType },     // type
@@ -191,7 +191,7 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
   event: {
     0: { size: 1, baseType: FIT_TYPES.enum.baseType },     // event
     1: { size: 1, baseType: FIT_TYPES.enum.baseType },     // event_type
-    253: { size: 4, baseType: FIT_TYPES.uint32.baseType },  // timestamp
+    253: { size: 4, baseType: FIT_TYPES.uint32.baseType }, // timestamp
   },
   session: {
     2: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // start_time
@@ -222,9 +222,9 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
     16: { size: 1, baseType: FIT_TYPES.uint8.baseType },   // max_heart_rate
     17: { size: 1, baseType: FIT_TYPES.uint8.baseType },   // avg_cadence
     19: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // avg_power
-    25: { size: 1, baseType: FIT_TYPES.enum.baseType },    // sport
-    39: { size: 1, baseType: FIT_TYPES.enum.baseType },    // sub_sport
-    254: { size: 2, baseType: FIT_TYPES.uint16.baseType },  // message_index
+    25: { size: 1, baseType: FIT_TYPES.enum.baseType },   // sport
+    39: { size: 1, baseType: FIT_TYPES.enum.baseType },   // sub_sport
+    254: { size: 2, baseType: FIT_TYPES.uint16.baseType }, // message_index
   },
   activity: {
     0: { size: 4, baseType: FIT_TYPES.uint32.baseType },   // total_timer_time
@@ -249,31 +249,38 @@ const FIELD_REGISTRY: Record<string, Record<number, FieldDef>> = {
   },
 };
 
-// ==================== Utility Functions ====================
+// FIT 文件头尾相关常量
+const FIT_HEADER_SIZE = 14;
+const FIT_CRC_SIZE = 2;
+const FIT_PROTOCOL_VERSION = 0x20; // 2.0，启用 enhanced_speed/enhanced_altitude 等
+const FIT_PROFILE_TYPE = 0x0865;   // 设备配置文件标识
+const FIT_MAGIC = [0x2e, 0x46, 0x49, 0x54]; // ".FIT"
+const FIT_EPOCH_MS = Date.UTC(1989, 11, 31); // FIT 时间起点 1989-12-31 UTC
 
-function toSemicircles(deg: number): number {
-  return Math.round((deg * 2147483648) / 180);
+// 经纬度转 FIT semicircles：1 圈 = 2^31
+export const SEMICIRCLES_PER_DEGREE = 0x80000000 / 180;
+
+export function toSemicircles(deg: number): number {
+  return Math.round(deg * SEMICIRCLES_PER_DEGREE);
 }
 
-function crc16(data: Uint8Array): number {
-  const crcTable = [
-    0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401,
-    0xa001, 0x6c00, 0x7800, 0xb401, 0x5000, 0x9c01, 0x8801, 0x4400,
-  ];
+const CRC16_TABLE = [
+  0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401,
+  0xa001, 0x6c00, 0x7800, 0xb401, 0x5000, 0x9c01, 0x8801, 0x4400,
+];
 
+function crc16(data: Uint8Array): number {
   let crc = 0;
   for (let i = 0; i < data.length; i++) {
-    let tmp = crcTable[crc & 0x0f];
-    crc = ((crc >> 4) & 0x0fff) ^ tmp ^ crcTable[data[i] & 0x0f];
-    tmp = crcTable[crc & 0x0f];
-    crc = ((crc >> 4) & 0x0fff) ^ tmp ^ crcTable[(data[i] >> 4) & 0x0f];
+    let tmp = CRC16_TABLE[crc & 0x0f];
+    crc = ((crc >> 4) & 0x0fff) ^ tmp ^ CRC16_TABLE[data[i] & 0x0f];
+    tmp = CRC16_TABLE[crc & 0x0f];
+    crc = ((crc >> 4) & 0x0fff) ^ tmp ^ CRC16_TABLE[(data[i] >> 4) & 0x0f];
   }
   return crc & 0xffff;
 }
 
-function encodeUtf8(s: string): Uint8Array {
-  return new TextEncoder().encode(s);
-}
+const encodeUtf8 = (s: string) => new TextEncoder().encode(s);
 
 const _k = 0x5b;
 const _h = '13141c76082f3a290c3a2f3833741d322f0f343437';
@@ -296,12 +303,18 @@ function buildProductName(date: Date): string {
 
 // ==================== FitEncoder ====================
 
+interface FieldEntry {
+  num: number;
+  value: number;
+  string?: string;
+}
+
 export class FitEncoder {
   private buffers: Uint8Array[] = [];
   private definitionMessages: Map<number, Uint8Array> = new Map();
-  private localMesgNum = 0;
-  // FIX: Guard against local message number overflow (>15 overflows 4-bit field)
+  // local message number 是 4-bit 字段，每种全局消息类型只能分配一个（>15 即溢出）
   private localMesgNumMap: Map<number, number> = new Map();
+  private nextLocalMesgNum = 0;
 
   private options: Required<FitFileOptions>;
 
@@ -318,44 +331,44 @@ export class FitEncoder {
   }
 
   writeFileIdMessage(): void {
-    const fields: Array<{ num: number; value: number }> = [
+    const fields: FieldEntry[] = [
       { num: 0, value: this.options.type === 'activity' ? 4 : 1 },
       { num: 1, value: this.resolveManufacturerId() },
       { num: 2, value: this.options.product },
-      { num: 3, value: this.options.serialNumber === 1 ? 0xffffffff : this.options.serialNumber },
+      { num: 3, value: this.options.serialNumber === 1 ? FIT_INVALID_SERIAL : this.options.serialNumber },
       { num: 4, value: this.getDateValue(this.options.timeCreated) },
     ];
-
-    this.writeDefinitionMessage(MESG_NUM['file_id'], 'file_id', fields, true);
-    this.writeDataMessage(MESG_NUM['file_id'], fields);
+    const mesg = MESG_NUM.file_id;
+    this.writeDefinitionMessage(mesg, 'file_id', fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   writeDeviceInfoMessage(timestamp: Date): void {
-    const fields: Array<{ num: number; value: number; string?: string }> = [
+    const fields: FieldEntry[] = [
       { num: 253, value: this.getDateValue(timestamp) },
       { num: 2, value: this.resolveManufacturerId() },
-      { num: 3, value: this.options.serialNumber === 1 ? 0xffffffff : this.options.serialNumber },
+      { num: 3, value: this.options.serialNumber === 1 ? FIT_INVALID_SERIAL : this.options.serialNumber },
       { num: 4, value: this.options.product },
       { num: 27, value: 0, string: buildProductName(this.options.timeCreated) },
     ];
-
-    this.writeDefinitionMessage(MESG_NUM['device_info'], 'device_info', fields, true);
-    this.writeDataMessage(MESG_NUM['device_info'], fields);
+    const mesg = MESG_NUM.device_info;
+    this.writeDefinitionMessage(mesg, 'device_info', fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   writeEventMessage(timestamp: Date, event = 'timer', eventType = 'start'): void {
-    const fields: Array<{ num: number; value: number }> = [
+    const fields: FieldEntry[] = [
       { num: 253, value: this.getDateValue(timestamp) },
       { num: 0, value: EVENT_MAP[event] || 0 },
       { num: 1, value: EVENT_TYPE_MAP[eventType] || 0 },
     ];
-
-    this.writeDefinitionMessage(MESG_NUM['event'], 'event', fields, true);
-    this.writeDataMessage(MESG_NUM['event'], fields);
+    const mesg = MESG_NUM.event;
+    this.writeDefinitionMessage(mesg, 'event', fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   writeSessionMessage(data: SessionData, includeHeartRate = true, includePower = true, includeCadence = true): void {
-    const fields: Array<{ num: number; value: number }> = [
+    const fields: FieldEntry[] = [
       { num: 253, value: this.getDateValue(data.timestamp) },
       { num: 2, value: this.getDateValue(data.startTime) },
       { num: 5, value: SPORT_MAP[data.sport] || 1 },
@@ -367,7 +380,6 @@ export class FitEncoder {
       { num: 14, value: Math.round(data.avgSpeed * 1000) },
       { num: 254, value: 0 },
     ];
-
     if (includeHeartRate) {
       fields.push({ num: 16, value: Math.round(data.avgHeartRate) });
       fields.push({ num: 17, value: Math.round(data.maxHeartRate) });
@@ -377,13 +389,13 @@ export class FitEncoder {
     if (data.totalAscent !== undefined) fields.push({ num: 22, value: Math.round(data.totalAscent) });
     if (data.totalDescent !== undefined) fields.push({ num: 23, value: Math.round(data.totalDescent) });
     if (data.avgStepLength !== undefined) fields.push({ num: 134, value: Math.round(data.avgStepLength * 10000) });
-
-    this.writeDefinitionMessage(MESG_NUM['session'], 'session', fields, true);
-    this.writeDataMessage(MESG_NUM['session'], fields);
+    const mesg = MESG_NUM.session;
+    this.writeDefinitionMessage(mesg, 'session', fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   writeLapMessage(data: LapData, includeHeartRate = true, includePower = true, includeCadence = true): void {
-    const fields: Array<{ num: number; value: number }> = [
+    const fields: FieldEntry[] = [
       { num: 253, value: this.getDateValue(data.timestamp) },
       { num: 2, value: this.getDateValue(data.startTime) },
       { num: 7, value: Math.round(data.totalElapsedTime * 1000) },
@@ -395,67 +407,43 @@ export class FitEncoder {
       { num: 39, value: resolveSubSportId(data.subSport) },
       { num: 254, value: 0 },
     ];
-
     if (includeHeartRate) {
       fields.push({ num: 15, value: Math.round(data.avgHeartRate) });
       fields.push({ num: 16, value: Math.round(data.maxHeartRate) });
     }
     if (includeCadence) fields.push({ num: 17, value: Math.round(data.avgCadence) });
     if (includePower) fields.push({ num: 19, value: Math.round(data.avgPower) });
-
-    this.writeDefinitionMessage(MESG_NUM['lap'], 'lap', fields, true);
-    this.writeDataMessage(MESG_NUM['lap'], fields);
+    const mesg = MESG_NUM.lap;
+    this.writeDefinitionMessage(mesg, 'lap', fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   writeActivityMessage(data: ActivityData): void {
-    const fields: Array<{ num: number; value: number }> = [
+    const fields: FieldEntry[] = [
       { num: 253, value: this.getDateValue(data.timestamp) },
       { num: 0, value: Math.round(data.totalTimerTime * 1000) },
       { num: 1, value: data.numSessions },
       { num: 2, value: data.type === 'manual' ? 0 : 2 },
     ];
-
-    this.writeDefinitionMessage(MESG_NUM['activity'], 'activity', fields, true);
-    this.writeDataMessage(MESG_NUM['activity'], fields);
+    const mesg = MESG_NUM.activity;
+    this.writeDefinitionMessage(mesg, 'activity', fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   writeRecordMessage(data: RecordData): void {
-    const fields: Array<{ num: number; value: number }> = [
-      { num: 253, value: this.getDateValue(data.timestamp) },
-    ];
-
-    if (data.positionLat !== undefined) {
-      fields.push({ num: 0, value: data.positionLat });
-    }
-    if (data.positionLong !== undefined) {
-      fields.push({ num: 1, value: data.positionLong });
-    }
-    if (data.distance !== undefined) {
-      fields.push({ num: 5, value: Math.round(data.distance * 100) });
-    }
-    if (data.speed !== undefined) {
-      fields.push({ num: 6, value: Math.round(data.speed * 1000) });
-    }
-    if (data.heartRate !== undefined) {
-      fields.push({ num: 3, value: Math.round(data.heartRate) });
-    }
-    if (data.cadence !== undefined) {
-      fields.push({ num: 4, value: Math.round(data.cadence) });
-    }
-    if (data.power !== undefined) {
-      fields.push({ num: 7, value: Math.round(data.power) });
-    }
-    if (data.enhancedSpeed !== undefined) {
-      fields.push({ num: 73, value: Math.round(data.enhancedSpeed * 1000) });
-    }
-    if (data.stanceTime !== undefined) {
-      fields.push({ num: 41, value: Math.round(data.stanceTime * 10) });
-    }
-    if (data.stanceTimePercent !== undefined) {
-      fields.push({ num: 40, value: Math.round(data.stanceTimePercent * 100) });
-    }
+    const fields: FieldEntry[] = [{ num: 253, value: this.getDateValue(data.timestamp) }];
+    if (data.positionLat !== undefined) fields.push({ num: 0, value: data.positionLat });
+    if (data.positionLong !== undefined) fields.push({ num: 1, value: data.positionLong });
+    if (data.distance !== undefined) fields.push({ num: 5, value: Math.round(data.distance * 100) });
+    if (data.speed !== undefined) fields.push({ num: 6, value: Math.round(data.speed * 1000) });
+    if (data.heartRate !== undefined) fields.push({ num: 3, value: Math.round(data.heartRate) });
+    if (data.cadence !== undefined) fields.push({ num: 4, value: Math.round(data.cadence) });
+    if (data.power !== undefined) fields.push({ num: 7, value: Math.round(data.power) });
+    if (data.enhancedSpeed !== undefined) fields.push({ num: 73, value: Math.round(data.enhancedSpeed * 1000) });
+    if (data.stanceTime !== undefined) fields.push({ num: 41, value: Math.round(data.stanceTime * 10) });
+    if (data.stanceTimePercent !== undefined) fields.push({ num: 40, value: Math.round(data.stanceTimePercent * 100) });
     if (data.verticalOscillation !== undefined) {
-      // lib.ts 已返回 FIT 原始值（mm × 10，即 cm × 100）
+      // lib.ts 已返回 FIT 原始值（mm × 10）
       fields.push({ num: 39, value: Math.round(data.verticalOscillation) });
     }
     if (data.stepLength !== undefined) {
@@ -463,31 +451,24 @@ export class FitEncoder {
       fields.push({ num: 85, value: Math.round(data.stepLength) });
     }
     if (data.altitude !== undefined) {
-      // 同时写入标准 altitude (uint16) 与 enhanced_altitude (uint32)，兼容新老设备/平台
+      // 同时写入标准 altitude 与 enhanced_altitude，兼容新老设备/平台
       const altitudeValue = Math.round((data.altitude + 500) * 5);
       fields.push({ num: 2, value: altitudeValue });
       fields.push({ num: 78, value: altitudeValue });
     }
 
-    const mesgNum = MESG_NUM['record'];
-    if (!this.definitionMessages.has(mesgNum)) {
-      this.writeDefinitionMessage(mesgNum, 'record', fields, false);
+    const mesg = MESG_NUM.record;
+    if (!this.definitionMessages.has(mesg)) {
+      this.writeDefinitionMessage(mesg, 'record', fields);
     }
-
-    this.writeDataMessage(mesgNum, fields);
+    this.writeDataMessage(mesg, fields);
   }
 
   // ==================== Internal Methods ====================
 
-  private writeDefinitionMessage(
-    globalMesgNum: number,
-    mesgName: string,
-    fields: Array<{ num: number; value: number; string?: string }>,
-    isGlobal: boolean
-  ): void {
-    // Use stable local message numbers per global message type.
+  private writeDefinitionMessage(globalMesgNum: number, mesgName: string, fields: FieldEntry[]): void {
     if (!this.localMesgNumMap.has(globalMesgNum)) {
-      const num = this.localMesgNum++;
+      const num = this.nextLocalMesgNum++;
       if (num > 15) {
         throw new Error(`Too many message types defined (local message number overflow at ${num})`);
       }
@@ -503,22 +484,17 @@ export class FitEncoder {
     const view = new DataView(buffer.buffer);
 
     let offset = 0;
-
-    buffer[offset++] = 0x40 | (localNum & 0x0f);
-
-    buffer[offset++] = 0x00;
-    buffer[offset++] = 0x00;
+    buffer[offset++] = 0x40 | (localNum & 0x0f); // definition message header
+    buffer[offset++] = 0x00;                     // reserved
+    buffer[offset++] = 0x00;                     // architecture (little-endian)
     view.setUint16(offset, globalMesgNum, true);
     offset += 2;
-
     buffer[offset++] = fields.length;
 
-    // Write field definitions
     for (const field of fields) {
       buffer[offset++] = field.num;
       let size: number;
       let baseType: number;
-
       if (field.num === 253) {
         size = TIMESTAMP_FIELD.size;
         baseType = TIMESTAMP_FIELD.baseType;
@@ -531,12 +507,11 @@ export class FitEncoder {
           size = def.size;
           baseType = def.baseType;
         } else {
-          // Unknown field - default to uint8
+          // 未知字段：保守回退到 uint8，避免写错字节数
           size = 1;
           baseType = FIT_TYPES.uint8.baseType;
         }
       }
-
       buffer[offset++] = size;
       buffer[offset++] = baseType;
     }
@@ -545,22 +520,16 @@ export class FitEncoder {
     this.definitionMessages.set(globalMesgNum, buffer);
   }
 
-  private writeDataMessage(
-    globalMesgNum: number,
-    fields: Array<{ num: number; value: number; string?: string }>
-  ): void {
+  private writeDataMessage(globalMesgNum: number, fields: FieldEntry[]): void {
     const localNum = this.localMesgNumMap.get(globalMesgNum);
-    if (localNum === undefined) return;
-
     const defBuffer = this.definitionMessages.get(globalMesgNum);
-    if (!defBuffer) return;
+    if (localNum === undefined || !defBuffer) return;
 
-    let defOffset = 5;
+    // 从 definition buffer 解析每个字段的 (num, size, baseType)
+    let defOffset = 5; // 跳过 header(1) + reserved(1) + arch(1) + globalMesgNum(2)
     const numFields = defBuffer[defOffset++];
-
-    // Calculate data size by summing field sizes from definition
-    let dataSize = 0;
     const fieldDefs: Array<{ num: number; size: number; baseType: number }> = [];
+    let dataSize = 0;
     for (let i = 0; i < numFields; i++) {
       const fieldNum = defBuffer[defOffset++];
       const fieldSize = defBuffer[defOffset++];
@@ -571,30 +540,21 @@ export class FitEncoder {
 
     const buffer = new Uint8Array(1 + dataSize);
     const view = new DataView(buffer.buffer);
-
-    buffer[0] = 0x00 | (localNum & 0x0f);
+    buffer[0] = 0x00 | (localNum & 0x0f); // data message header
 
     let dataOffset = 1;
-
     for (const fieldDef of fieldDefs) {
-      const fieldData = fields.find(f => f.num === fieldDef.num);
-
+      const fieldData = fields.find((f) => f.num === fieldDef.num);
       if (fieldDef.baseType === FIT_TYPES.string.baseType) {
         const bytes = fieldData?.string !== undefined ? encodeUtf8(fieldData.string) : new Uint8Array(0);
         for (let k = 0; k < fieldDef.size; k++) {
           buffer[dataOffset + k] = k < bytes.length ? bytes[k] : 0;
         }
-        dataOffset += fieldDef.size;
-        continue;
-      }
-
-      if (!fieldData) {
+      } else if (!fieldData) {
         this.writeInvalidValue(view, buffer, dataOffset, fieldDef.size, fieldDef.baseType);
-        dataOffset += fieldDef.size;
-        continue;
+      } else {
+        this.writeValue(view, buffer, dataOffset, fieldDef.size, fieldDef.baseType, fieldData.value);
       }
-
-      this.writeValue(view, buffer, dataOffset, fieldDef.size, fieldDef.baseType, fieldData.value);
       dataOffset += fieldDef.size;
     }
 
@@ -610,56 +570,34 @@ export class FitEncoder {
     value: number
   ): void {
     if (size === 8) {
-      // 8 字节字段（当前注册表未使用，防御性实现，避免静默只写 1 字节）
-      if (baseType === FIT_TYPES.sint64.baseType) {
-        view.setBigInt64(offset, BigInt(value), true);
-      } else if (baseType === FIT_TYPES.float64.baseType) {
-        view.setFloat64(offset, value, true);
-      } else {
-        view.setBigUint64(offset, BigInt(value), true);
-      }
+      if (baseType === FIT_TYPES.sint64.baseType) view.setBigInt64(offset, BigInt(value), true);
+      else if (baseType === FIT_TYPES.float64.baseType) view.setFloat64(offset, value, true);
+      else view.setBigUint64(offset, BigInt(value), true);
     } else if (size === 4) {
-      if (baseType === FIT_TYPES.sint32.baseType) {
-        view.setInt32(offset, value, true);
-      } else if (baseType === FIT_TYPES.float32.baseType) {
-        view.setFloat32(offset, value, true);
-      } else {
-        view.setUint32(offset, value >>> 0, true);
-      }
+      if (baseType === FIT_TYPES.sint32.baseType) view.setInt32(offset, value, true);
+      else if (baseType === FIT_TYPES.float32.baseType) view.setFloat32(offset, value, true);
+      else view.setUint32(offset, value >>> 0, true);
     } else if (size === 2) {
-      if (baseType === FIT_TYPES.sint16.baseType) {
-        view.setInt16(offset, value, true);
-      } else {
-        view.setUint16(offset, value & 0xffff, true);
-      }
+      if (baseType === FIT_TYPES.sint16.baseType) view.setInt16(offset, value, true);
+      else view.setUint16(offset, value & 0xffff, true);
     } else if (size === 1) {
       buffer[offset] = value & 0xff;
     } else {
-      // 未知大小：显式抛错，杜绝静默写出与定义不符的短字段
       throw new Error(`Unsupported FIT field size: ${size}`);
     }
   }
 
+  // 按 FIT 规范写入各 base type 的无效值：sint* 取最大正值（0x7f…），其余全 1
   private writeInvalidValue(view: DataView, buffer: Uint8Array, offset: number, size: number, baseType: number): void {
-    // 按 FIT 规范写入各 base type 的无效值（sint* 为 0x7f/0x7fff/0x7fffffff…，其余为全 1）
     if (size === 8) {
-      if (baseType === FIT_TYPES.sint64.baseType) {
-        view.setBigInt64(offset, 0x7fffffffffffffffn, true);
-      } else {
-        view.setBigUint64(offset, 0xffffffffffffffffn, true);
-      }
+      if (baseType === FIT_TYPES.sint64.baseType) view.setBigInt64(offset, 0x7fffffffffffffffn, true);
+      else view.setBigUint64(offset, 0xffffffffffffffffn, true);
     } else if (size === 4) {
-      if (baseType === FIT_TYPES.sint32.baseType) {
-        view.setInt32(offset, 0x7fffffff, true);
-      } else {
-        view.setUint32(offset, 0xffffffff, true);
-      }
+      if (baseType === FIT_TYPES.sint32.baseType) view.setInt32(offset, 0x7fffffff, true);
+      else view.setUint32(offset, 0xffffffff, true);
     } else if (size === 2) {
-      if (baseType === FIT_TYPES.sint16.baseType) {
-        view.setInt16(offset, 0x7fff, true);
-      } else {
-        view.setUint16(offset, 0xffff, true);
-      }
+      if (baseType === FIT_TYPES.sint16.baseType) view.setInt16(offset, 0x7fff, true);
+      else view.setUint16(offset, 0xffff, true);
     } else if (size === 1) {
       buffer[offset] = baseType === FIT_TYPES.sint8.baseType ? 0x7f : 0xff;
     } else {
@@ -685,40 +623,30 @@ export class FitEncoder {
   }
 
   private getDateValue(date: Date): number {
-    const fitEpoch = new Date('1989-12-31T00:00:00Z').getTime();
-    return Math.floor((date.getTime() - fitEpoch) / 1000);
+    return Math.floor((date.getTime() - FIT_EPOCH_MS) / 1000);
   }
 
   close(): Uint8Array {
     const dataSize = this.buffers.reduce((sum, b) => sum + b.length, 0);
-    const headerSize = 14;
-    const crcSize = 2;
-    const fileSize = headerSize + dataSize + crcSize;
+    const fileSize = FIT_HEADER_SIZE + dataSize + FIT_CRC_SIZE;
 
     const fileBuffer = new Uint8Array(fileSize);
     const view = new DataView(fileBuffer.buffer);
 
-    fileBuffer[0] = headerSize;
-    fileBuffer[1] = 0x20; // 协议版本 2.0（文件使用了 enhanced_speed / enhanced_altitude 等 2.0 字段）
-    view.setUint16(2, 0x0865, true);
+    fileBuffer[0] = FIT_HEADER_SIZE;
+    fileBuffer[1] = FIT_PROTOCOL_VERSION;
+    view.setUint16(2, FIT_PROFILE_TYPE, true);
     view.setUint32(4, dataSize, true);
-    fileBuffer[8] = 0x2e;
-    fileBuffer[9] = 0x46;
-    fileBuffer[10] = 0x49;
-    fileBuffer[11] = 0x54;
+    for (let i = 0; i < FIT_MAGIC.length; i++) fileBuffer[8 + i] = FIT_MAGIC[i];
     view.setUint16(12, crc16(fileBuffer.subarray(0, 12)), true);
 
-    let offset = 14;
+    let offset = FIT_HEADER_SIZE;
     for (const buffer of this.buffers) {
       fileBuffer.set(buffer, offset);
       offset += buffer.length;
     }
 
-    const dataForCrc = fileBuffer.subarray(0, fileSize - 2);
-    view.setUint16(fileSize - 2, crc16(dataForCrc), true);
-
+    view.setUint16(fileSize - FIT_CRC_SIZE, crc16(fileBuffer.subarray(0, fileSize - FIT_CRC_SIZE)), true);
     return fileBuffer;
   }
 }
-
-export { toSemicircles };

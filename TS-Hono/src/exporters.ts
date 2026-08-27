@@ -1,19 +1,20 @@
-import type { ProcessedRoute } from './lib';
+import type { ProcessedRoute, SampleData, SensorOptions } from './lib';
+import { filenamePrefix } from './lib';
 
 export type ExportFormat = 'fit' | 'tcx' | 'gpx' | 'csv';
 
-export interface ExportSensorOptions {
-  includeHeartRate?: boolean;
-  includePower?: boolean;
-  includeCadence?: boolean;
-  includeGaitData?: boolean;
-  includeAltitude?: boolean;
-}
-
 export interface ExportContext {
-  sensorOptions?: ExportSensorOptions;
+  sensorOptions?: Partial<SensorOptions>;
   altitudes?: number[] | null;
   elevationInfo?: { source: string; status: string } | null;
+}
+
+interface EffectiveOptions {
+  includeHr: boolean;
+  includeCadence: boolean;
+  includePower: boolean;
+  includeAltitude: boolean;
+  realAltitudes: number[] | null;
 }
 
 function esc(value: string | number): string {
@@ -28,41 +29,48 @@ function fmtNum(value: number, digits = 3): string {
   return Number.isFinite(value) ? value.toFixed(digits) : '0';
 }
 
-function filenamePrefix(result: ProcessedRoute): string {
-  return result.sportType === 'walking' ? 'walk_' : 'run_';
+/** 提取三种格式共用的传感器开关 + 与样本长度对齐的真实海拔数组 */
+function extractEffectiveOptions(ctx: ExportContext, samples: SampleData[]): EffectiveOptions {
+  const o = ctx.sensorOptions || {};
+  const altitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
+  return {
+    includeHr: o.includeHeartRate !== false,
+    includeCadence: o.includeCadence !== false,
+    includePower: o.includePower !== false,
+    includeAltitude: o.includeAltitude !== false && ctx.elevationInfo?.status !== 'none',
+    realAltitudes: altitudes,
+  };
+}
+
+function altitudeAt(opts: EffectiveOptions, samples: SampleData[], i: number): number {
+  return opts.realAltitudes ? opts.realAltitudes[i] : samples[i].altitude;
 }
 
 // ==================== TCX ====================
 
 export function buildTcx(result: ProcessedRoute, ctx: ExportContext): string {
-  const { startDate, totalDist, totalDurationSec, elapsedExtraSeconds, sportType, variant, samples, calories } = result;
-  const includeAltitude = ctx.sensorOptions?.includeAltitude !== false && ctx.elevationInfo?.status !== 'none';
-  const includeHr = ctx.sensorOptions?.includeHeartRate !== false;
-  const includeCadence = ctx.sensorOptions?.includeCadence !== false;
-  const includePower = ctx.sensorOptions?.includePower !== false;
-  const sessionElapsed = totalDurationSec + elapsedExtraSeconds;
+  const { startDate, totalDist, totalDurationSec, elapsedExtraSeconds, sportType, samples, calories } = result;
+  const opts = extractEffectiveOptions(ctx, samples);
   const activityType = sportType === 'walking' ? 'Walking' : 'Running';
-  const realAltitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
+  const sessionElapsed = totalDurationSec + elapsedExtraSeconds;
 
-  let trackpoints = '';
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i];
-    const altitude = realAltitudes ? realAltitudes[i] : s.altitude;
-    const t = new Date(startDate.getTime() + s.timeSec * 1000);
+  const trackpoints = samples.map((s, i) => {
+    const altitude = altitudeAt(opts, samples, i);
+    const t = new Date(startDate.getTime() + s.timeSec * 1000).toISOString();
     let tp = '      <Trackpoint>\n';
-    tp += `        <Time>${t.toISOString()}</Time>\n`;
+    tp += `        <Time>${t}</Time>\n`;
     tp += `        <Position>\n          <LatitudeDegrees>${fmtNum(s.lat, 6)}</LatitudeDegrees>\n          <LongitudeDegrees>${fmtNum(s.lng, 6)}</LongitudeDegrees>\n        </Position>\n`;
-    if (includeAltitude) tp += `        <AltitudeMeters>${fmtNum(altitude)}</AltitudeMeters>\n`;
+    if (opts.includeAltitude) tp += `        <AltitudeMeters>${fmtNum(altitude)}</AltitudeMeters>\n`;
     tp += `        <DistanceMeters>${fmtNum(s.distance)}</DistanceMeters>\n`;
-    if (includeHr) tp += `        <HeartRateBpm><Value>${Math.round(s.heartRate)}</Value></HeartRateBpm>\n`;
+    if (opts.includeHr) tp += `        <HeartRateBpm><Value>${Math.round(s.heartRate)}</Value></HeartRateBpm>\n`;
     tp += '        <Extensions>\n          <ns3:TPX xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">\n';
-    if (includeCadence) tp += `            <ns3:RunCadence>${Math.round(s.cadence / 2)}</ns3:RunCadence>\n`;
+    if (opts.includeCadence) tp += `            <ns3:RunCadence>${Math.round(s.cadence / 2)}</ns3:RunCadence>\n`;
     tp += `            <ns3:Speed>${fmtNum(s.speed)}</ns3:Speed>\n`;
-    if (includePower) tp += `            <ns3:Watts>${Math.round(s.power)}</ns3:Watts>\n`;
+    if (opts.includePower) tp += `            <ns3:Watts>${Math.round(s.power)}</ns3:Watts>\n`;
     tp += '          </ns3:TPX>\n        </Extensions>\n';
     tp += '      </Trackpoint>\n';
-    trackpoints += tp;
-  }
+    return tp;
+  }).join('');
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -76,7 +84,7 @@ export function buildTcx(result: ProcessedRoute, ctx: ExportContext): string {
         <Intensity>Active</Intensity>
         <TriggerMethod>Manual</TriggerMethod>
         <Track>
-${trackpoints}        </Track>
+ ${trackpoints}        </Track>
       </Lap>
     </Activity>
   </Activities>
@@ -87,37 +95,32 @@ ${trackpoints}        </Track>
 // ==================== GPX ====================
 
 export function buildGpx(result: ProcessedRoute, ctx: ExportContext): string {
-  const { startDate, totalDurationSec, sportType, variant, samples } = result;
-  const includeAltitude = ctx.sensorOptions?.includeAltitude !== false && ctx.elevationInfo?.status !== 'none';
-  const includeHr = ctx.sensorOptions?.includeHeartRate !== false;
-  const includeCadence = ctx.sensorOptions?.includeCadence !== false;
-  const name = `${filenamePrefix(result)}${variant}`;
-  const realAltitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
+  const { startDate, sportType, variant, samples } = result;
+  const opts = extractEffectiveOptions(ctx, samples);
+  const name = `${filenamePrefix(sportType)}${variant}`;
 
-  let points = '';
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i];
-    const altitude = realAltitudes ? realAltitudes[i] : s.altitude;
-    const t = new Date(startDate.getTime() + s.timeSec * 1000);
+  const points = samples.map((s, i) => {
+    const altitude = altitudeAt(opts, samples, i);
+    const t = new Date(startDate.getTime() + s.timeSec * 1000).toISOString();
     let trkpt = `      <trkpt lat="${fmtNum(s.lat, 6)}" lon="${fmtNum(s.lng, 6)}">\n`;
-    if (includeAltitude) trkpt += `        <ele>${fmtNum(altitude)}</ele>\n`;
-    trkpt += `        <time>${t.toISOString()}</time>\n`;
-    if (includeHr || includeCadence) {
+    if (opts.includeAltitude) trkpt += `        <ele>${fmtNum(altitude)}</ele>\n`;
+    trkpt += `        <time>${t}</time>\n`;
+    if (opts.includeHr || opts.includeCadence) {
       trkpt += '        <extensions>\n          <gpxtpx:TrackPointExtension xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n';
-      if (includeHr) trkpt += `            <gpxtpx:hr>${Math.round(s.heartRate)}</gpxtpx:hr>\n`;
-      if (includeCadence) trkpt += `            <gpxtpx:cad>${Math.round(s.cadence / 2)}</gpxtpx:cad>\n`;
+      if (opts.includeHr) trkpt += `            <gpxtpx:hr>${Math.round(s.heartRate)}</gpxtpx:hr>\n`;
+      if (opts.includeCadence) trkpt += `            <gpxtpx:cad>${Math.round(s.cadence / 2)}</gpxtpx:cad>\n`;
       trkpt += '          </gpxtpx:TrackPointExtension>\n        </extensions>\n';
     }
     trkpt += '      </trkpt>\n';
-    points += trkpt;
-  }
+    return trkpt;
+  }).join('');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="FitTool" xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>${esc(name)}</name>
     <trkseg>
-${points}    </trkseg>
+ ${points}    </trkseg>
   </trk>
 </gpx>
 `;
@@ -126,37 +129,31 @@ ${points}    </trkseg>
 // ==================== CSV ====================
 
 export function buildCsv(result: ProcessedRoute, ctx: ExportContext): string {
-  const { startDate, totalDurationSec, sportType, samples } = result;
-  const includeAltitude = ctx.sensorOptions?.includeAltitude !== false && ctx.elevationInfo?.status !== 'none';
-  const includeHr = ctx.sensorOptions?.includeHeartRate !== false;
-  const includeCadence = ctx.sensorOptions?.includeCadence !== false;
-  const includePower = ctx.sensorOptions?.includePower !== false;
-  const realAltitudes = ctx.altitudes && ctx.altitudes.length === samples.length ? ctx.altitudes : null;
+  const { startDate, samples } = result;
+  const opts = extractEffectiveOptions(ctx, samples);
 
   const header = [
     'timestamp', 'latitude', 'longitude',
-    ...(includeAltitude ? ['altitude_m'] : []),
+    ...(opts.includeAltitude ? ['altitude_m'] : []),
     'speed_mps', 'distance_m',
-    ...(includeHr ? ['heart_rate_bpm'] : []),
-    ...(includeCadence ? ['cadence_spm'] : []),
-    ...(includePower ? ['power_w'] : []),
+    ...(opts.includeHr ? ['heart_rate_bpm'] : []),
+    ...(opts.includeCadence ? ['cadence_spm'] : []),
+    ...(opts.includePower ? ['power_w'] : []),
   ].join(',');
 
   const rows = samples.map((s, i) => {
-    const altitude = realAltitudes ? realAltitudes[i] : s.altitude;
-    const t = new Date(startDate.getTime() + s.timeSec * 1000);
-    const row = [
-      t.toISOString(),
+    const t = new Date(startDate.getTime() + s.timeSec * 1000).toISOString();
+    return [
+      t,
       fmtNum(s.lat, 6),
       fmtNum(s.lng, 6),
-      ...(includeAltitude ? [fmtNum(altitude)] : []),
+      ...(opts.includeAltitude ? [fmtNum(altitudeAt(opts, samples, i))] : []),
       fmtNum(s.speed, 2),
       fmtNum(s.distance, 2),
-      ...(includeHr ? [String(Math.round(s.heartRate))] : []),
-      ...(includeCadence ? [String(Math.round(s.cadence))] : []),
-      ...(includePower ? [String(Math.round(s.power))] : []),
-    ];
-    return row.join(',');
+      ...(opts.includeHr ? [String(Math.round(s.heartRate))] : []),
+      ...(opts.includeCadence ? [String(Math.round(s.cadence))] : []),
+      ...(opts.includePower ? [String(Math.round(s.power))] : []),
+    ].join(',');
   });
 
   return [header, ...rows].join('\n') + '\n';
@@ -165,25 +162,26 @@ export function buildCsv(result: ProcessedRoute, ctx: ExportContext): string {
 // ==================== Dispatcher ====================
 
 export interface ExportedFile {
-  body: string | ArrayBuffer;
+  body: string;
   contentType: string;
   filename: string;
 }
+
+const FORMAT_BUILDERS = {
+  tcx: { contentType: 'application/vnd.garmin.tcx+xml', build: buildTcx },
+  gpx: { contentType: 'application/gpx+xml', build: buildGpx },
+  csv: { contentType: 'text/csv; charset=utf-8', build: buildCsv },
+} as const;
 
 export function exportActivityFile(
   format: Exclude<ExportFormat, 'fit'>,
   result: ProcessedRoute,
   ctx: ExportContext
 ): ExportedFile {
-  const filename = `${filenamePrefix(result)}${result.variant}.${format}`;
-  switch (format) {
-    case 'tcx':
-      return { body: buildTcx(result, ctx), contentType: 'application/vnd.garmin.tcx+xml', filename };
-    case 'gpx':
-      return { body: buildGpx(result, ctx), contentType: 'application/gpx+xml', filename };
-    case 'csv':
-      return { body: buildCsv(result, ctx), contentType: 'text/csv; charset=utf-8', filename };
-    default:
-      return { body: buildTcx(result, ctx), contentType: 'application/octet-stream', filename };
-  }
+  const builder = FORMAT_BUILDERS[format];
+  return {
+    body: builder.build(result, ctx),
+    contentType: builder.contentType,
+    filename: `${filenamePrefix(result.sportType)}${result.variant}.${format}`,
+  };
 }
